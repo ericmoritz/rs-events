@@ -1,0 +1,19 @@
+[package]
+name = "rs_events"
+version = "0.1.0"
+authors = ["Eric Moritz <ericmoritz@gmail.com>"]
+
+[dependencies]
+uuid = { version = "0.5.1", features = ["serde", "v4"] }
+chrono = { version = "0.4.0", features = ["serde", "rustc-serialize"] }
+failure = "0.1.1"
+serde = "1.0.27"
+serde_derive = "1.0.27"
+dotenv = "0.11.0"
+diesel = { version = "1.0.0", features = ["postgres", "uuid"] }
+jsonwebtoken = "4.0.0"
+rust-crypto = "0.2.36"
+libpasta = "0.0.5"
+
+[dev-dependencies]
+galvanic-test = "0.1.3"
