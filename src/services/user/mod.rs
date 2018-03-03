@@ -5,6 +5,9 @@ use failure::Error;
 use std::fmt;
 use uuid::Uuid;
 
+use actix::prelude::*;
+
+
 #[derive(Debug, Fail)]
 pub enum ServiceError {
     InvalidConfirmToken,
@@ -50,6 +53,9 @@ pub struct PasswordGrantRequest {
     pub password: String,
     pub client_id: String,
 }
+impl Message for PasswordGrantRequest {
+    type Result = Result<AccessTokenResponse, Error>;
+}
 
 // https://tools.ietf.org/html/rfc6749#section-4.1.4
 #[derive(Default, Serialize, Deserialize, Debug)]
@@ -84,6 +90,9 @@ pub struct RegisterRequest {
     pub email: String,
     pub password: String,
 }
+impl Message for RegisterRequest {
+    type Result = Result<RegisterResponse, Error>;
+}
 
 #[derive(Serialize, Deserialize, Debug)]
 pub struct RegisterResponse {
@@ -93,6 +102,9 @@ pub struct RegisterResponse {
 #[derive(Serialize, Deserialize, Debug)]
 pub struct ConfirmNewUserRequest {
     pub confirm_token: ConfirmToken,
+}
+impl Message for ConfirmNewUserRequest {
+    type Result = Result<ConfirmNewUserResponse, Error>;
 }
 
 #[derive(Serialize, Deserialize, Debug)]
@@ -107,6 +119,9 @@ struct ConfirmTokenClaim {
 #[derive(Serialize, Deserialize, Debug)]
 pub struct CurrentUserRequest {
     pub access_token: AccessToken,
+}
+impl Message for CurrentUserRequest {
+    type Result = Result<CurrentUserResponse, Error>;
 }
 
 // https://schema.org/Person

@@ -8,6 +8,8 @@ extern crate jsonwebtoken;
 extern crate crypto;
 extern crate libpasta;
 extern crate serde;
+extern crate actix;
+extern crate futures;
 
 pub mod services;
 pub mod models;

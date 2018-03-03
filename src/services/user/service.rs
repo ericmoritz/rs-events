@@ -8,31 +8,62 @@ use std::default::Default;
 use failure::Error;
 use serde::ser::Serialize;
 
-pub struct Service<'a> {
-    conn: &'a PgConnection,
-    secret_key: &'a [u8],
+pub struct Service {
+    conn: PgConnection,
+    secret_key: String,
 }
 
-impl<'a> Service<'a> {
-    pub fn new(conn: &'a PgConnection, secret_key: &'a [u8]) -> Service<'a> {
+impl Service {
+    pub fn new(conn: PgConnection, secret_key: String) -> Service {
         Service{conn, secret_key}
     }
 }
+impl Actor for Service {
+    type Context = SyncContext<Self>;
+}
+impl Handler<RegisterRequest> for Service {
+    type Result = Result<RegisterResponse, Error>;
 
-impl<'a> UserService for Service<'a> {
+    fn handle(&mut self, request: RegisterRequest, _: &mut Self::Context) -> Self::Result {
+        self.register(&request)
+    }
+}
+impl Handler<ConfirmNewUserRequest> for Service {
+    type Result = Result<ConfirmNewUserResponse, Error>;
+
+    fn handle(&mut self, request: ConfirmNewUserRequest, _: &mut Self::Context) -> Self::Result {
+        self.confirm_new_user(&request)
+    }
+}
+impl Handler<PasswordGrantRequest> for Service {
+    type Result = Result<AccessTokenResponse, Error>;
+
+    fn handle(&mut self, request: PasswordGrantRequest, _: &mut Self::Context) -> Self::Result {
+        self.password_grant(&request)
+    }
+}
+impl Handler<CurrentUserRequest> for Service {
+    type Result = Result<CurrentUserResponse, Error>;
+
+    fn handle(&mut self, request: CurrentUserRequest, _: &mut Self::Context) -> Self::Result {
+        self.current_user(&request)
+    }
+}
+
+impl UserService for Service {
    // login is called to get an access token using a un/pw
     fn password_grant(&self, request: &PasswordGrantRequest) -> Result<AccessTokenResponse, Error> {
-        if let Some(user) = User::login(self.conn, &request.name, &request.password)? {
-            return Ok(access_token_response(self.secret_key, user))
+        if let Some(user) = User::login(&self.conn, &request.name, &request.password)? {
+            return Ok(access_token_response(self.secret_key.as_bytes(), user))
         }
         Err(ServiceError::PermissionDenied.into())
     }
 
     // refresh_token_grant is called to get a new access token
     fn refresh_token_grant(&self, request: &RefreshGrantRequest) -> Result<AccessTokenResponse, Error> {
-        if let Some(id) = validate_refresh_token(self.secret_key, &request.refresh_token) {
-            if let Some(user) = User::find(self.conn, id)? {
-                return Ok(access_token_response(self.secret_key, user))
+        if let Some(id) = validate_refresh_token(self.secret_key.as_bytes(), &request.refresh_token) {
+            if let Some(user) = User::find(&self.conn, id)? {
+                return Ok(access_token_response(self.secret_key.as_bytes(), user))
             }
         }
         Err(ServiceError::PermissionDenied.into())
@@ -45,12 +76,12 @@ impl<'a> UserService for Service<'a> {
             name: request.name.clone(),
             password: request.password.clone(),
             email: request.email.clone(),
-        }.create(self.conn)?;
+        }.create(&self.conn)?;
 
         match user {
             None => Err(ServiceError::UserExists.into()),
             Some(user) => Ok(RegisterResponse{
-                confirm_token: encode_token(self.secret_key, 
+                confirm_token: encode_token(self.secret_key.as_bytes(), 
                     ConfirmTokenClaim{sub: user.id.simple().to_string(), confirm_token: true}
                 )
             })
@@ -59,9 +90,9 @@ impl<'a> UserService for Service<'a> {
 
     // confirm_new_user
     fn confirm_new_user(&self, request: &ConfirmNewUserRequest) -> Result<ConfirmNewUserResponse, Error> {
-        match validate_confirm_token(self.secret_key, &request.confirm_token) {
+        match validate_confirm_token(self.secret_key.as_bytes(), &request.confirm_token) {
             Some(id) => {
-                User::confirm(self.conn, id)?;
+                User::confirm(&self.conn, id)?;
                 Ok(ConfirmNewUserResponse)
             }
             None => {
@@ -72,8 +103,8 @@ impl<'a> UserService for Service<'a> {
 
     // Get the user for a request token
     fn current_user(&self, request: &CurrentUserRequest) -> Result<CurrentUserResponse, Error> {
-        if let Some(id) = validate_access_token(self.secret_key, &request.access_token) {
-            if let Some(user) = User::find(self.conn, id)? {
+        if let Some(id) = validate_access_token(self.secret_key.as_bytes(), &request.access_token) {
+            if let Some(user) = User::find(&self.conn, id)? {
                 return Ok(CurrentUserResponse{
                     identifier: user.id,
                     name: user.name,
@@ -85,6 +116,9 @@ impl<'a> UserService for Service<'a> {
     }
 }
 
+/////
+/// Internal
+/////
 // TODO: Figure out how to merge the validate copy pasta
 fn validate_confirm_token(key: &[u8], token: &str) -> Option<Uuid> {
     let token_result = jwt::decode::<ConfirmTokenClaim>(token, key, &jwt::Validation::default());
