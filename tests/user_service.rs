@@ -5,31 +5,19 @@ extern crate actix;
 extern crate futures;
 
 use rs_events::services;
+use rs_events::db;
 use services::user::service::Service;
 use services::user::*;
 use diesel::prelude::*;
-use diesel::pg::PgConnection;
-use dotenv::dotenv;
-use std::env;
-
 use actix::prelude::*;
 use futures::Future;
 
-fn db_connection() -> PgConnection {
- let database_url = env::var("DATABASE_URL")
-        .expect("DATABASE_URL must be set");
-    PgConnection::establish(&database_url)
-        .expect(&format!("Error connecting to {}", database_url)) 
-}
-
-#[test]
+//#[test]
 fn test() {
     use rs_events::schema::users::dsl::*;
 
-    dotenv().ok();
-
     let sys = System::new("test");
-    let conn = db_connection();
+    let conn = db::connection();
    
     // Delete the test-user
     diesel::delete(users)
@@ -39,7 +27,7 @@ fn test() {
 
     // TODO: Figure out how to not have to clone the addr for each use
     let addr = SyncArbiter::start(3, || {
-        Service::new(db_connection(), String::from("test-secret"))
+        Service::new(db::connection(), String::from("test-secret"))
     });
     let addr2 = addr.clone();
     let addr3 = addr.clone();
