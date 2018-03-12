@@ -5,7 +5,6 @@ use futures::future::Future;
 use futures::future;
 use services::user;
 use services::user::{service, ServiceError};
-use std::rc::Rc;
 
 //TODO add a user/machine readable response for the bad requests
 impl ResponseError for ServiceError {
@@ -20,17 +19,17 @@ impl ResponseError for ServiceError {
 
 
 pub struct State {
-    addr: Rc<Addr<Syn, service::Service>>, 
+    addr: Addr<Syn, service::Service>, 
 }
 
 pub fn new(addr: Addr<Syn, service::Service>) -> Application<State> {
-    Application::with_state(State{addr: Rc::new(addr)})
+    Application::with_state(State{addr: addr})
         .resource("/confirm", |r| r.method(Method::POST).a(confirm))
         .resource("/register", |r| r.method(Method::POST).a(register))
 }
 
 pub fn register(req: HttpRequest<State>) -> Box<Future<Item=HttpResponse, Error=Error>> {
-    let addr = Rc::clone(&req.state().addr);
+    let addr = req.state().addr.clone();
     req.json()
         .from_err()
         .and_then(move |rreq: user::RegisterRequest| addr.send(rreq).from_err() )
@@ -39,9 +38,8 @@ pub fn register(req: HttpRequest<State>) -> Box<Future<Item=HttpResponse, Error=
 }
 
 pub fn confirm(req: HttpRequest<State>) -> Box<Future<Item=HttpResponse, Error=Error>> {
-    let addr = Rc::clone(&req.state().addr);
+    let addr = req.state().addr.clone();
     req.json()
-        .map_err(|e| { println!("JSON Error {:?}", e); e })
         .from_err()
         .and_then(move |rreq: user::ConfirmNewUserRequest| addr.send(rreq).from_err() )
         .and_then(|resp| httpcodes::HTTPOk.build().json(resp?))
