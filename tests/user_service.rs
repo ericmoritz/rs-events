@@ -25,7 +25,7 @@ fn test() {
         .execute(&conn)
         .expect("Error deleting test user");
 
-    // TODO: Figure out how to not have to clone the addr for each use
+    //TODO mock out the I/O
     let addr = SyncArbiter::start(3, || {
         Service::new(db::connection(), String::from("test-secret"))
     });
