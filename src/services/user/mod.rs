@@ -5,6 +5,7 @@ use failure::Error;
 use std::fmt;
 use uuid::Uuid;
 
+
 #[derive(Debug, Fail)]
 pub enum ServiceError {
     InvalidConfirmToken,
@@ -45,10 +46,10 @@ pub type ConfirmToken = String;
 
 // https://tools.ietf.org/html/rfc6749#section-4.3
 #[derive(Serialize, Deserialize, Debug)]
-pub struct PasswordGrantRequest {
-    pub name: String,
-    pub password: String,
-    pub client_id: String,
+pub struct PasswordGrantRequest<'a> {
+    pub name: &'a str,
+    pub password: &'a str,
+    pub client_id: &'a str,
 }
 
 // https://tools.ietf.org/html/rfc6749#section-4.1.4
@@ -68,8 +69,8 @@ struct AccessTokenClaim {
 
 // https://tools.ietf.org/html/rfc6749#section-6
 #[derive(Serialize, Deserialize, Debug)]
-pub struct RefreshGrantRequest {
-    pub refresh_token: RefreshToken,
+pub struct RefreshGrantRequest<'a> {
+    pub refresh_token: &'a str,
 }
 
 #[derive(Debug, Serialize, Deserialize)]
@@ -79,10 +80,10 @@ struct RefreshTokenClaim {
 }
 
 #[derive(Serialize, Deserialize, Debug)]
-pub struct RegisterRequest {
-    pub name: String,
-    pub email: String,
-    pub password: String,
+pub struct RegisterRequest<'a> {
+    pub name: &'a str,
+    pub email: &'a str,
+    pub password: &'a str,
 }
 
 #[derive(Serialize, Deserialize, Debug)]

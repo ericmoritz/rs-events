@@ -8,7 +8,9 @@ extern crate jsonwebtoken;
 extern crate crypto;
 extern crate libpasta;
 extern crate serde;
+extern crate dotenv;
 
 pub mod services;
 pub mod models;
 pub mod schema;
+pub mod db;

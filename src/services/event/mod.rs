@@ -116,11 +116,3 @@ pub struct RsvpForEventRequest {
     // The access_token retrieved using the user service
     access_token: user::AccessToken,    
 }
-
-#[cfg(test)]
-mod test {
-    #[test]
-    fn test() {
-        
-    }
-}
