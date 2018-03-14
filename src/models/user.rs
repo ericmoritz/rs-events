@@ -31,7 +31,7 @@ impl User {
             .execute(conn)
     }
 
-    pub fn login(conn: &PgConnection, username: &String, pass: &String) -> QueryResult<Option<User>> {
+    pub fn login(conn: &PgConnection, username: &str, pass: &str) -> QueryResult<Option<User>> {
         use schema::users::dsl::*;
 
         let result: Option<User> = users
@@ -40,7 +40,7 @@ impl User {
             .get_result(conn)
             .optional()?;
         
-        Ok(result.and_then(|x| if verify_password(&x.password, pass.clone()) {
+        Ok(result.and_then(|x| if verify_password(&x.password, pass.into()) {
             Some(x)
         } else {
             None

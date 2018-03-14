@@ -6,8 +6,6 @@ extern crate actix_web;
 extern crate futures;
 extern crate serde_json;
 
-
-use futures::{Future};
 use rs_events::services;
 use rs_events::db;
 use services::user::service::Service;
@@ -50,9 +48,9 @@ fn test() {
                 password: String::from("test-pass"),
                 email: String::from("test@example.com"),
             }
-        ).unwrap();
+        ).expect("/register request");
    
-    let response = srv.execute(request.send()).unwrap();
+    let response = srv.execute(request.send()).expect("/register response");
 
     assert!(response.status().is_success());
     
@@ -74,7 +72,7 @@ fn test() {
     println!("{:?}", response);
     assert!(response.status().is_success());
 
-    let data: ConfirmNewUserResponse = serde_json::from_slice(
+    let _data: ConfirmNewUserResponse = serde_json::from_slice(
         &*srv.execute(response.body()).unwrap()
     ).unwrap();
 
