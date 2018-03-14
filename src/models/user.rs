@@ -13,31 +13,48 @@ pub struct User {
     pub confirmed: bool,
 }
 
-impl User {
-    pub fn find(conn: &PgConnection, user_id: Uuid) -> QueryResult<Option<User>> {
+// This is the basic I/O trait so we can mock it later
+pub trait UserModel {
+    fn find(&self, user_id: Uuid) -> QueryResult<Option<User>>;
+    fn confirm(&self, user_id: Uuid) -> QueryResult<usize>;
+    fn login(&self, username: &str, pass: &str) -> QueryResult<Option<User>>;
+    fn create(&self, user: NewUser) -> QueryResult<Option<User>>;
+}
+
+// This is the model implementation
+pub struct Model<'a> {
+    conn: &'a PgConnection
+}
+impl<'a> Model<'a> {
+    pub fn new(conn: &'a PgConnection) -> Self {
+        Model{conn}
+    }
+}
+impl<'a> UserModel for Model<'a> {
+    fn find(&self, user_id: Uuid) -> QueryResult<Option<User>> {
         use schema::users::dsl::*;
 
         users.filter(id.eq(user_id))
             .filter(confirmed.eq(true))
-            .get_result(conn)
+            .get_result(self.conn)
             .optional()
     }
 
-    pub fn confirm(conn: &PgConnection, user_id: Uuid) -> QueryResult<usize> {
+    fn confirm(&self, user_id: Uuid) -> QueryResult<usize> {
         use schema::users::dsl::*;
         diesel::update(users)
             .filter(id.eq(user_id))
             .set(confirmed.eq(true))
-            .execute(conn)
+            .execute(self.conn)
     }
 
-    pub fn login(conn: &PgConnection, username: &str, pass: &str) -> QueryResult<Option<User>> {
+    fn login(&self, username: &str, pass: &str) -> QueryResult<Option<User>> {
         use schema::users::dsl::*;
 
         let result: Option<User> = users
             .filter(name.eq(username))
             .filter(confirmed.eq(true))
-            .get_result(conn)
+            .get_result(self.conn)
             .optional()?;
         
         Ok(result.and_then(|x| if verify_password(&x.password, pass.into()) {
@@ -45,6 +62,25 @@ impl User {
         } else {
             None
         }))
+    }
+
+    fn create(&self, mut new_user: NewUser) -> QueryResult<Option<User>> {
+         use schema::users::dsl::*;
+         new_user.password = hash_password(new_user.password.clone());
+ 
+         self.conn.transaction(|| {
+            let user = users.filter(name.eq(new_user.name.clone()))
+                .get_result::<User>(self.conn)
+                .optional()?;
+            
+            match user {
+                Some(_) => Ok(None),
+                None => diesel::insert_into(users)
+                    .values(&new_user)
+                    .get_result::<User>(self.conn)
+                    .optional()
+            }
+         })
     }
 }
 
@@ -55,26 +91,4 @@ pub struct NewUser {
     pub name: String,
     pub email: String,
     pub password: String
-}
-
-impl NewUser {
-
-    pub fn create(mut self, conn: &PgConnection) -> QueryResult<Option<User>> {
-         use schema::users::dsl::*;
-         self.password = hash_password(self.password.clone());
- 
-         conn.transaction(|| {
-            let user = users.filter(name.eq(self.name.clone()))
-                .get_result::<User>(conn)
-                .optional()?;
-            
-            match user {
-                Some(_) => Ok(None),
-                None => diesel::insert_into(users)
-                    .values(&self)
-                    .get_result::<User>(conn)
-                    .optional()
-            }
-         })
-    }
 }

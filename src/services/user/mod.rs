@@ -1,6 +1,5 @@
 // This serves as the public API for the events service
 pub mod service;
-pub mod web_app;
 
 use failure::Error;
 use std::fmt;
