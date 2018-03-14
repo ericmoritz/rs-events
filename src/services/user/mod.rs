@@ -69,8 +69,8 @@ struct AccessTokenClaim {
 
 // https://tools.ietf.org/html/rfc6749#section-6
 #[derive(Serialize, Deserialize, Debug)]
-pub struct RefreshGrantRequest {
-    pub refresh_token: RefreshToken,
+pub struct RefreshGrantRequest<'a> {
+    pub refresh_token: &'a str,
 }
 
 #[derive(Debug, Serialize, Deserialize)]
