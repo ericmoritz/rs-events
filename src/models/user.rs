@@ -74,7 +74,7 @@ impl<'a> UserModel for Model<'a> {
         };
         
          self.conn.transaction(|| {
-            let user = users.filter(name.eq(new_user.name.clone()))
+            let user = users.filter(name.eq(new_user.name))
                 .get_result::<User>(self.conn)
                 .optional()?;
             

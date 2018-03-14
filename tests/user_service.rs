@@ -1,8 +1,6 @@
 extern crate rs_events;
 extern crate diesel;
 extern crate dotenv;
-extern crate actix;
-extern crate futures;
 
 use rs_events::services;
 use rs_events::db;

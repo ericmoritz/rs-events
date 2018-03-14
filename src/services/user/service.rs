@@ -23,7 +23,7 @@ impl<'a> Service<'a> {
 impl<'a> UserService for Service<'a> {
    // login is called to get an access token using a un/pw
     fn password_grant(&self, request: &PasswordGrantRequest) -> Result<AccessTokenResponse, Error> {
-        let user: User = self.model.login(&request.name, &request.password)?
+        let user: User = self.model.login(request.name, request.password)?
             .ok_or(ServiceError::PermissionDenied)?;
 
         Ok(access_token_response(self.secret_key, &user))
@@ -32,7 +32,7 @@ impl<'a> UserService for Service<'a> {
     // refresh_token_grant is called to get a new access token
     fn refresh_token_grant(&self, request: &RefreshGrantRequest) -> Result<AccessTokenResponse, Error> {
 
-        let id = validate_refresh_token(self.secret_key, &request.refresh_token)
+        let id = validate_refresh_token(self.secret_key, request.refresh_token)
             .ok_or(ServiceError::PermissionDenied)?;
         
         let user = self.model.find(id)?
@@ -45,9 +45,9 @@ impl<'a> UserService for Service<'a> {
     fn register(&self, request: &RegisterRequest) -> Result<RegisterResponse, Error> {
         let new_user = NewUser{
             id: Uuid::new_v4(),
-            name: &request.name,
-            password: &request.password,
-            email: &request.email,
+            name: request.name,
+            password: request.password,
+            email: request.email,
         };
         let user = self.model.create(new_user)?
             .ok_or(ServiceError::UserExists)?;
