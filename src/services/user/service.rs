@@ -11,11 +11,11 @@ use serde::ser::Serialize;
 pub struct Service<'a> {
     // TODO make this generic so we can mock it out
     model: Model<'a>,
-    secret_key: String,
+    secret_key: &'a [u8],
 }
 
 impl<'a> Service<'a> {
-    pub fn new(model: Model, secret_key: String) -> Service {
+    pub fn new(model: Model<'a>, secret_key: &'a [u8]) -> Service<'a> {
         Service{model, secret_key}
     }
 }
@@ -26,34 +26,34 @@ impl<'a> UserService for Service<'a> {
         let user: User = self.model.login(&request.name, &request.password)?
             .ok_or(ServiceError::PermissionDenied)?;
 
-        Ok(access_token_response(self.secret_key.as_bytes(), &user))
+        Ok(access_token_response(self.secret_key, &user))
     }
 
     // refresh_token_grant is called to get a new access token
     fn refresh_token_grant(&self, request: &RefreshGrantRequest) -> Result<AccessTokenResponse, Error> {
 
-        let id = validate_refresh_token(self.secret_key.as_bytes(), &request.refresh_token)
+        let id = validate_refresh_token(self.secret_key, &request.refresh_token)
             .ok_or(ServiceError::PermissionDenied)?;
         
         let user = self.model.find(id)?
             .ok_or(ServiceError::PermissionDenied)?;
         
-        Ok(access_token_response(self.secret_key.as_bytes(), &user))
+        Ok(access_token_response(self.secret_key, &user))
     }
 
     // register is called when registering a new user
     fn register(&self, request: &RegisterRequest) -> Result<RegisterResponse, Error> {
         let new_user = NewUser{
             id: Uuid::new_v4(),
-            name: request.name.clone(),
-            password: request.password.clone(),
-            email: request.email.clone(),
+            name: &request.name,
+            password: &request.password,
+            email: &request.email,
         };
         let user = self.model.create(new_user)?
             .ok_or(ServiceError::UserExists)?;
 
         Ok(RegisterResponse{
-                confirm_token: encode_token(self.secret_key.as_bytes(), 
+                confirm_token: encode_token(self.secret_key, 
                     ConfirmTokenClaim{sub: user.id.simple().to_string(), confirm_token: true}
                 )
         })
@@ -61,7 +61,7 @@ impl<'a> UserService for Service<'a> {
 
     // confirm_new_user
     fn confirm_new_user(&self, request: &ConfirmNewUserRequest) -> Result<ConfirmNewUserResponse, Error> {
-        let id = validate_confirm_token(self.secret_key.as_bytes(), &request.confirm_token)
+        let id = validate_confirm_token(self.secret_key, &request.confirm_token)
             .ok_or(ServiceError::InvalidConfirmToken)?;
 
         self.model.confirm(id)?;
@@ -71,7 +71,7 @@ impl<'a> UserService for Service<'a> {
 
     // Get the user for a request token
     fn current_user(&self, request: &CurrentUserRequest) -> Result<CurrentUserResponse, Error> {
-        let id = validate_access_token(self.secret_key.as_bytes(), &request.access_token)
+        let id = validate_access_token(self.secret_key, &request.access_token)
             .ok_or(ServiceError::PermissionDenied)?;
         let user =  self.model.find(id)?
             .ok_or(ServiceError::PermissionDenied)?;

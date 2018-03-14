@@ -24,12 +24,12 @@ fn test() {
 
     //TODO mock out the I/O
     let conn = db::connection();
-    let service = Service::new(user::Model::new(&conn), String::from("test-secret"));
+    let service = Service::new(user::Model::new(&conn), b"test-secret");
     
     let registration = service.register(&RegisterRequest{
-            name: String::from("test-user"),
-            password: String::from("test-pass"),
-            email: String::from("test@example.com"),
+            name: "test-user",
+            password: "test-pass",
+            email: "test@example.com",
     }).expect("Could not register");
     
     let _confirm = service.confirm_new_user(&ConfirmNewUserRequest{
@@ -37,8 +37,8 @@ fn test() {
     }).expect("Could not confirm");
 
     let _login = service.password_grant(&PasswordGrantRequest{
-        client_id: "test".into(),
-        name: "test-user".into(),
-        password: "test-pass".into(),
+        client_id: "test",
+        name: "test-user",
+        password: "test-pass",
     }).expect("Could Not Login");
 }

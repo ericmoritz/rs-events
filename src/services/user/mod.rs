@@ -5,8 +5,6 @@ use failure::Error;
 use std::fmt;
 use uuid::Uuid;
 
-use actix::prelude::*;
-
 
 #[derive(Debug, Fail)]
 pub enum ServiceError {
@@ -48,13 +46,10 @@ pub type ConfirmToken = String;
 
 // https://tools.ietf.org/html/rfc6749#section-4.3
 #[derive(Serialize, Deserialize, Debug)]
-pub struct PasswordGrantRequest {
-    pub name: String,
-    pub password: String,
-    pub client_id: String,
-}
-impl Message for PasswordGrantRequest {
-    type Result = Result<AccessTokenResponse, Error>;
+pub struct PasswordGrantRequest<'a> {
+    pub name: &'a str,
+    pub password: &'a str,
+    pub client_id: &'a str,
 }
 
 // https://tools.ietf.org/html/rfc6749#section-4.1.4
@@ -85,13 +80,10 @@ struct RefreshTokenClaim {
 }
 
 #[derive(Serialize, Deserialize, Debug)]
-pub struct RegisterRequest {
-    pub name: String,
-    pub email: String,
-    pub password: String,
-}
-impl Message for RegisterRequest {
-    type Result = Result<RegisterResponse, Error>;
+pub struct RegisterRequest<'a> {
+    pub name: &'a str,
+    pub email: &'a str,
+    pub password: &'a str,
 }
 
 #[derive(Serialize, Deserialize, Debug)]
@@ -102,9 +94,6 @@ pub struct RegisterResponse {
 #[derive(Serialize, Deserialize, Debug)]
 pub struct ConfirmNewUserRequest {
     pub confirm_token: ConfirmToken,
-}
-impl Message for ConfirmNewUserRequest {
-    type Result = Result<ConfirmNewUserResponse, Error>;
 }
 
 #[derive(Serialize, Deserialize, Debug)]
@@ -119,9 +108,6 @@ struct ConfirmTokenClaim {
 #[derive(Serialize, Deserialize, Debug)]
 pub struct CurrentUserRequest {
     pub access_token: AccessToken,
-}
-impl Message for CurrentUserRequest {
-    type Result = Result<CurrentUserResponse, Error>;
 }
 
 // https://schema.org/Person

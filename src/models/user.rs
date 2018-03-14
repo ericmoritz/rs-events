@@ -64,10 +64,15 @@ impl<'a> UserModel for Model<'a> {
         }))
     }
 
-    fn create(&self, mut new_user: NewUser) -> QueryResult<Option<User>> {
-         use schema::users::dsl::*;
-         new_user.password = hash_password(new_user.password.clone());
- 
+    fn create(&self, new_user: NewUser) -> QueryResult<Option<User>> {
+        use schema::users::dsl::*;
+
+        let hash = hash_password(String::from(new_user.password));
+        let new_user = NewUser{
+            password: &hash,
+            ..new_user
+        };
+        
          self.conn.transaction(|| {
             let user = users.filter(name.eq(new_user.name.clone()))
                 .get_result::<User>(self.conn)
@@ -86,9 +91,9 @@ impl<'a> UserModel for Model<'a> {
 
 #[derive(Insertable)]
 #[table_name="users"]
-pub struct NewUser {
+pub struct NewUser<'a> {
     pub id: Uuid,
-    pub name: String,
-    pub email: String,
-    pub password: String
+    pub name: &'a str,
+    pub email: &'a str,
+    pub password: &'a str,
 }
