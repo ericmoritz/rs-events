@@ -6,7 +6,7 @@ services:
   web:
     build: 
       context: ..
-    command: bash ./run-server.sh
+    command: ./wait-for-it.sh db:5432 -- bash ./run-server.sh
     environment:
       DATABASE_URL: postgres://postgres@db/
     ports: 
@@ -16,6 +16,6 @@ services:
   bdd:
     build: 
       context: .
-    command: node_modules/.bin/cucumber-js
+    command: ./wait-for-it.sh web:8080 -- node_modules/.bin/cucumber-js
     depends_on:
       - web

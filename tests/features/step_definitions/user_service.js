@@ -32,7 +32,18 @@ Given('a user registers at {string} using:', (url, table) => {
         body: data,
         json: true
     }).then((doc) => {
-        console.dir(doc);
         world.confirm_token = doc.confirm_token;
     })
 });
+
+When('they confirm their registration at {string}', url => {
+    let world = this;
+    return rp({
+        url: PREFIX + url + '?confirm_token=' + escape(world.confirm_token),
+        json: true
+    }).then(doc => {
+        console.dir(doc);
+        world.access_token = doc.access_token;
+        world.refresh_token = doc.refresh_token;
+    })
+})
