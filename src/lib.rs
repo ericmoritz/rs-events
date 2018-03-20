@@ -1,6 +1,7 @@
 #[macro_use] extern crate serde_derive;
 #[macro_use] extern crate failure;
 #[macro_use] extern crate diesel;
+#[macro_use] extern crate rouille;
 
 extern crate chrono;
 extern crate uuid;
@@ -14,3 +15,4 @@ pub mod services;
 pub mod models;
 pub mod schema;
 pub mod db;
+pub mod web;

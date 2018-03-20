@@ -1,7 +1,6 @@
 // This serves as the public API for the events service
 pub mod service;
 
-use failure::Error;
 use std::fmt;
 use uuid::Uuid;
 
@@ -10,7 +9,8 @@ use uuid::Uuid;
 pub enum ServiceError {
     InvalidConfirmToken,
     PermissionDenied,
-    UserExists
+    UserExists,
+    Other,
 }
 
 impl fmt::Display for ServiceError {
@@ -22,19 +22,19 @@ impl fmt::Display for ServiceError {
 // UserService is the API of the users service
 pub trait UserService {
     // login is called to get an access token using a un/pw
-    fn password_grant(&self, request: &PasswordGrantRequest) -> Result<AccessTokenResponse, Error>;
+    fn password_grant(&self, request: &PasswordGrantRequest) -> Result<AccessTokenResponse, ServiceError>;
 
     // refresh_token_grant is called to get a new access token
-    fn refresh_token_grant(&self, request: &RefreshGrantRequest) -> Result<AccessTokenResponse, Error>;
+    fn refresh_token_grant(&self, request: &RefreshGrantRequest) -> Result<AccessTokenResponse, ServiceError>;
 
     // register is called when registering a new user
-    fn register(&self, request: &RegisterRequest) -> Result<RegisterResponse, Error>;
+    fn register(&self, request: &RegisterRequest) -> Result<RegisterResponse, ServiceError>;
 
     // confirm_new_user
-    fn confirm_new_user(&self, request: &ConfirmNewUserRequest) -> Result<ConfirmNewUserResponse, Error>;
+    fn confirm_new_user(&self, request: &ConfirmNewUserRequest) -> Result<ConfirmNewUserResponse, ServiceError>;
 
     // Get the user for a request token
-    fn current_user(&self, request: &CurrentUserRequest) -> Result<CurrentUserResponse, Error>;
+    fn current_user(&self, request: &CurrentUserRequest) -> Result<CurrentUserResponse, ServiceError>;
 }
 
 // https://tools.ietf.org/html/rfc6749#section-4.2.2

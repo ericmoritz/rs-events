@@ -4,9 +4,8 @@ use super::*;
 use models::user::{UserModel, Model, NewUser, User};
 use jsonwebtoken as jwt;
 use std::default::Default;
-use failure::Error;
 use serde::ser::Serialize;
-
+use std::error::Error;
 
 pub struct Service<'a> {
     // TODO make this generic so we can mock it out
@@ -20,9 +19,16 @@ impl<'a> Service<'a> {
     }
 }
 
+impl<E: Error> From<E> for ServiceError {
+    fn from(_e: E) -> Self {
+        // TODO: Learn how to embed the inner error
+        ServiceError::Other
+    }
+}
+
 impl<'a> UserService for Service<'a> {
    // login is called to get an access token using a un/pw
-    fn password_grant(&self, request: &PasswordGrantRequest) -> Result<AccessTokenResponse, Error> {
+    fn password_grant(&self, request: &PasswordGrantRequest) -> Result<AccessTokenResponse, ServiceError> {
         let user: User = self.model.login(request.name, request.password)?
             .ok_or(ServiceError::PermissionDenied)?;
 
@@ -30,7 +36,7 @@ impl<'a> UserService for Service<'a> {
     }
 
     // refresh_token_grant is called to get a new access token
-    fn refresh_token_grant(&self, request: &RefreshGrantRequest) -> Result<AccessTokenResponse, Error> {
+    fn refresh_token_grant(&self, request: &RefreshGrantRequest) -> Result<AccessTokenResponse, ServiceError> {
 
         let id = validate_refresh_token(self.secret_key, request.refresh_token)
             .ok_or(ServiceError::PermissionDenied)?;
@@ -42,7 +48,7 @@ impl<'a> UserService for Service<'a> {
     }
 
     // register is called when registering a new user
-    fn register(&self, request: &RegisterRequest) -> Result<RegisterResponse, Error> {
+    fn register(&self, request: &RegisterRequest) -> Result<RegisterResponse, ServiceError> {
         let new_user = NewUser{
             id: Uuid::new_v4(),
             name: request.name,
@@ -60,7 +66,7 @@ impl<'a> UserService for Service<'a> {
     }
 
     // confirm_new_user
-    fn confirm_new_user(&self, request: &ConfirmNewUserRequest) -> Result<ConfirmNewUserResponse, Error> {
+    fn confirm_new_user(&self, request: &ConfirmNewUserRequest) -> Result<ConfirmNewUserResponse, ServiceError> {
         let id = validate_confirm_token(self.secret_key, &request.confirm_token)
             .ok_or(ServiceError::InvalidConfirmToken)?;
 
@@ -70,7 +76,7 @@ impl<'a> UserService for Service<'a> {
     }
 
     // Get the user for a request token
-    fn current_user(&self, request: &CurrentUserRequest) -> Result<CurrentUserResponse, Error> {
+    fn current_user(&self, request: &CurrentUserRequest) -> Result<CurrentUserResponse, ServiceError> {
         let id = validate_access_token(self.secret_key, &request.access_token)
             .ok_or(ServiceError::PermissionDenied)?;
         let user =  self.model.find(id)?
