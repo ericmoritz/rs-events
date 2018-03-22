@@ -45,11 +45,10 @@ pub type RefreshToken = String;
 pub type ConfirmToken = String;
 
 // https://tools.ietf.org/html/rfc6749#section-4.3
-#[derive(Serialize, Deserialize, Debug)]
+#[derive(Serialize, Deserialize, Debug, PartialEq)]
 pub struct PasswordGrantRequest<'a> {
     pub name: &'a str,
     pub password: &'a str,
-    pub client_id: &'a str,
 }
 
 // https://tools.ietf.org/html/rfc6749#section-4.1.4
@@ -68,7 +67,7 @@ struct AccessTokenClaim {
 }
 
 // https://tools.ietf.org/html/rfc6749#section-6
-#[derive(Serialize, Deserialize, Debug)]
+#[derive(Serialize, Deserialize, Debug, PartialEq)]
 pub struct RefreshGrantRequest<'a> {
     pub refresh_token: &'a str,
 }
