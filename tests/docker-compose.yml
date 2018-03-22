@@ -6,7 +6,7 @@ services:
   web:
     build: 
       context: ..
-    command: ./wait-for-it.sh db:5432 -- bash ./run-server.sh
+    command: ./wait-for-it.sh db:5432 -- target/release/test_server
     environment:
       DATABASE_URL: postgres://postgres@db/
     ports: 
