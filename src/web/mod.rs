@@ -1,4 +1,4 @@
-
+//! This is the initial MVP of the events service to get the BDD tests to work
 use rouille::Response;
 use rouille;
 use rouille::input::post;
@@ -20,13 +20,15 @@ struct Status<'a> {
     pub status: &'a str,
 }
 
+///
+/// Runs a web server that passes the BDD tests
+/// 
 pub fn run() {
 
     eprintln!("Listening on 0.0.0.0:8080");
     rouille::start_server("0.0.0.0:8080", |request| {
 
         rouille::log(&request, io::stderr(), || {
-            // TODO: figure out how to not connect with each request
             let conn = db::connection();
             let user_model = UserModel::new(&conn);
             let user_service = user::service::Service::new(UserModel::new(&conn), b"....");
@@ -42,6 +44,7 @@ pub fn run() {
                         
                     rouille::Response::json(&status)
                 },
+
                 (POST) (/oauth/register) => {
                     #[derive(Deserialize)]
                     struct Json {
@@ -64,7 +67,7 @@ pub fn run() {
                 (GET) (/oauth/register/confirm) => {
                     let confirm_token: String = try_or_400!(
                         request.get_param("confirm_token")
-                            .ok_or(WebError::MissingConfirmToken)
+                            .ok_or(RunError::MissingConfirmToken)
                     );
                     let req = user::ConfirmNewUserRequest{
                         confirm_token: confirm_token
@@ -73,6 +76,7 @@ pub fn run() {
                         .map(Response::from)
                         .unwrap_or_else(Response::from)
                 },
+
                 (POST) (/oauth/token) => {
                     let form = try_or_400!(post::raw_urlencoded_post_input(request));
                     let grant_type = try_or_400!(find_grant_type(&form));
@@ -106,12 +110,49 @@ pub fn run() {
                         .map(Response::from)
                         .unwrap_or_else(Response::from)
                 },
+                
                 _ => Response::empty_404()
             )
         })
     })
 }
 
+///
+/// This is a private Error type for things that can go wrong in run()
+/// 
+#[derive(Debug, PartialEq)]
+enum RunError {
+    MissingConfirmToken,
+    MissingPassword,
+    MissingUsername,
+    MissingRefreshToken,
+    InvalidGrantType,
+}
+
+impl fmt::Display for RunError {
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+        write!(f, "{:?}", self)
+    }
+}
+
+impl Error for RunError {
+    fn description(&self) -> &str {
+        use self::RunError::*;
+
+        match *self {
+            MissingUsername => "missing username",
+            MissingPassword => "missing password",
+            MissingRefreshToken => "missing refresh_token",
+            MissingConfirmToken => "missing confirm token",
+            InvalidGrantType => "invalid grant type",
+            
+        }
+    }
+}
+
+///
+/// # Converters
+/// 
 impl From<user::CurrentUserResponse> for Response {
     fn from(result: user::CurrentUserResponse) -> Self {
         Response::json(&result)
@@ -146,36 +187,12 @@ impl From<user::ServiceError> for Response {
         }
     }
 }
-#[derive(Debug, PartialEq)]
-enum WebError {
-    MissingConfirmToken,
-    MissingPassword,
-    MissingUsername,
-    MissingRefreshToken,
-    InvalidGrantType,
-}
 
-impl fmt::Display for WebError {
-    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
-        write!(f, "{:?}", self)
-    }
-}
 
-impl Error for WebError {
-    fn description(&self) -> &str {
-        use self::WebError::*;
-
-        match *self {
-            MissingUsername => "missing username",
-            MissingPassword => "missing password",
-            MissingRefreshToken => "missing refresh_token",
-            MissingConfirmToken => "missing confirm token",
-            InvalidGrantType => "invalid grant type",
-            
-        }
-    }
-}
-
+///
+/// This is a enum to represent the grant_type strings, "password" and "refresh_token"
+///
+/// Note: We may want to move this to the service module
 #[derive(Debug, PartialEq)]
 enum GrantType {
     Password,
@@ -183,17 +200,16 @@ enum GrantType {
 }
 
 impl FromStr for GrantType {
-    type Err = WebError;
+    type Err = RunError;
 
     fn from_str(s: &str) -> Result<Self, Self::Err> {
         match s {
             "password" => Ok(GrantType::Password),
             "refresh_token" => Ok(GrantType::Refresh),
-            _ => Err(WebError::InvalidGrantType)
+            _ => Err(RunError::InvalidGrantType)
         }
     }
 }
-
 #[test]
 fn test_grant_type_from_str() {
     assert_eq!(
@@ -201,16 +217,20 @@ fn test_grant_type_from_str() {
     );
 }
 
-////
-// find_grant_type
-////
-fn find_grant_type(fields: &Vec<(String, String)>) -> Result<GrantType, WebError> {
+///
+/// # Helpers
+/// 
+
+///
+/// Finds the grant_type in the Vector of form fields
+///
+fn find_grant_type(fields: &Vec<(String, String)>) -> Result<GrantType, RunError> {
     for &(ref k, ref v) in fields.iter() {
         if k == "grant_type" {
             return GrantType::from_str(&v);
         }
     }
-    Err(WebError::InvalidGrantType)
+    Err(RunError::InvalidGrantType)
 }
 #[test]
 fn test_find_grant_type() {
@@ -227,22 +247,22 @@ fn test_find_grant_type() {
 
     assert_eq!(
         find_grant_type(&vec![("x".into(), "y".into()), ("a".into(), "b".into())]).unwrap_err(),
-        WebError::InvalidGrantType
+        RunError::InvalidGrantType
     );
 }
 
 ///
-/// form_to_password_grant
+/// Converts the Form Fields to a PasswordGrantRequest  
 ///
-fn form_to_password_grant<'a>(fields: &'a Vec<(String, String)>) -> Result<user::PasswordGrantRequest<'a>, WebError> {
+fn form_to_password_grant<'a>(fields: &'a Vec<(String, String)>) -> Result<user::PasswordGrantRequest<'a>, RunError> {
     let fields: HashMap<&str, &str> = HashMap::from_iter(
         fields.iter().map(|&(ref k, ref v)| {
             let k: &str = k;
             let v: &str = v;
             (k,v)
         }));
-    let name = fields.get("username").ok_or(WebError::MissingUsername)?;
-    let password = fields.get("password").ok_or(WebError::MissingPassword)?;
+    let name = fields.get("username").ok_or(RunError::MissingUsername)?;
+    let password = fields.get("password").ok_or(RunError::MissingPassword)?;
 
     Ok(user::PasswordGrantRequest{
         name: name,
@@ -265,24 +285,24 @@ fn test_form_to_password_grant() {
 
     assert_eq!(
         form_to_password_grant(&vec![]).unwrap_err(),
-        WebError::MissingUsername
+        RunError::MissingUsername
     );
 
     assert_eq!(
         form_to_password_grant(&vec![("username".into(), "test-user".into())]).unwrap_err(),
-        WebError::MissingPassword
+        RunError::MissingPassword
     );
 
     assert_eq!(
         form_to_password_grant(&vec![("password".into(), "test-pass".into())]).unwrap_err(),
-        WebError::MissingUsername
+        RunError::MissingUsername
     );
 }
 
 ///
-/// form_to_refresh_grant
+/// Converts the Form Fields into a RefreshGrantRequest
 ///
-fn form_to_refresh_grant<'a>(fields: &'a Vec<(String, String)>) -> Result<user::RefreshGrantRequest<'a>, WebError> {
+fn form_to_refresh_grant<'a>(fields: &'a Vec<(String, String)>) -> Result<user::RefreshGrantRequest<'a>, RunError> {
     let fields: HashMap<&str, &str> = HashMap::from_iter(
         fields.iter().map(|&(ref k, ref v)| {
             let k: &str = k;
@@ -290,7 +310,7 @@ fn form_to_refresh_grant<'a>(fields: &'a Vec<(String, String)>) -> Result<user::
             (k,v)
         }));
         
-    let token = fields.get("refresh_token").ok_or(WebError::MissingRefreshToken)?;
+    let token = fields.get("refresh_token").ok_or(RunError::MissingRefreshToken)?;
     
     Ok(user::RefreshGrantRequest{
         refresh_token: token,
@@ -310,6 +330,6 @@ fn test_form_to_refresh_grant() {
 
     assert_eq!(
         form_to_refresh_grant(&vec![]).unwrap_err(),
-        WebError::MissingRefreshToken
+        RunError::MissingRefreshToken
     );
 }
