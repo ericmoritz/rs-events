@@ -18,6 +18,5 @@ RUN rm -rf ./src
 # Copy the source and do the build
 COPY src/ src/
 COPY ./migrations ./migrations
-COPY ./tests/run-server.sh ./run-server.sh
 COPY ./tests/wait-for-it.sh ./wait-for-it.sh
 RUN cargo build --release
