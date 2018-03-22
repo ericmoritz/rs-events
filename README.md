@@ -2,25 +2,15 @@
 
 A web service for events
 
-## development install
+## Running unit tests
 
-```
-sudo apt-get install libssl-dev libpq-dev libmysqlclient-dev libsqlite3-0 libsqlite3-dev
-cargo install diesel_cli
-```
+Simply run `make test` to run the unit tests.
 
-Create a local rs_events database
+## Running BDD Tests
 
-```
-$ sudo -u postgres createuser rs_events
-$ sudo -u postgres createdb 
-$ sudo -u postgres psql
-psql=# alter user rs_events with encrypted password 'rs_events';
-psql=# grant all privileges on database rs_events to rs_events;
-$ diesel migration run
+There a suite of Cucumber-js tests in [tests/features](./tests/features).  
+These tests use [Docker Compose](https://docs.docker.com/compose/) to run the tests in an isolated environment.
 
+You will need both Docker and Docker Compose in order run the BDD tests.  [Docker Machine](https://docs.docker.com/machine/install-machine/) or [Docker for Mac]()
 
-```
-
-
-
+Simply run `make bdd` to run the tests.
