@@ -1,0 +1,19 @@
+{
+  "name": "rs-event-cuke",
+  "version": "1.0.0",
+  "description": "",
+  "main": "index.js",
+  "scripts": {
+    "test": "echo \"Error: no test specified\" && exit 1"
+  },
+  "author": "",
+  "license": "ISC",
+  "dependencies": {
+    "bluebird": "^3.5.1",
+    "cucumber": "^4.0.0",
+    "oauth": "^0.9.15",
+    "request": "^2.85.0",
+    "request-promise": "^4.2.2",
+    "retry-as-promised": "^2.3.2"
+  }
+}

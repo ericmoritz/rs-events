@@ -1,7 +1,6 @@
 // This serves as the public API for the events service
 pub mod service;
 
-use failure::Error;
 use std::fmt;
 use uuid::Uuid;
 
@@ -10,7 +9,8 @@ use uuid::Uuid;
 pub enum ServiceError {
     InvalidConfirmToken,
     PermissionDenied,
-    UserExists
+    UserExists,
+    Other,
 }
 
 impl fmt::Display for ServiceError {
@@ -22,43 +22,35 @@ impl fmt::Display for ServiceError {
 // UserService is the API of the users service
 pub trait UserService {
     // login is called to get an access token using a un/pw
-    fn password_grant(&self, request: &PasswordGrantRequest) -> Result<AccessTokenResponse, Error>;
+    fn password_grant(&self, request: &PasswordGrantRequest) -> Result<AccessTokenResponse, ServiceError>;
 
     // refresh_token_grant is called to get a new access token
-    fn refresh_token_grant(&self, request: &RefreshGrantRequest) -> Result<AccessTokenResponse, Error>;
+    fn refresh_token_grant(&self, request: &RefreshGrantRequest) -> Result<AccessTokenResponse, ServiceError>;
 
     // register is called when registering a new user
-    fn register(&self, request: &RegisterRequest) -> Result<RegisterResponse, Error>;
+    fn register(&self, request: &RegisterRequest) -> Result<RegisterResponse, ServiceError>;
 
     // confirm_new_user
-    fn confirm_new_user(&self, request: &ConfirmNewUserRequest) -> Result<ConfirmNewUserResponse, Error>;
+    fn confirm_new_user(&self, request: &ConfirmNewUserRequest) -> Result<ConfirmNewUserResponse, ServiceError>;
 
     // Get the user for a request token
-    fn current_user(&self, request: &CurrentUserRequest) -> Result<CurrentUserResponse, Error>;
+    fn current_user(&self, request: &CurrentUserRequest) -> Result<CurrentUserResponse, ServiceError>;
 }
 
-// https://tools.ietf.org/html/rfc6749#section-4.2.2
-pub type AccessToken = String;
-// https://tools.ietf.org/html/rfc6749#section-4.2.2
-pub type RefreshToken = String;
-// Probably a [JWT](https://tools.ietf.org/html/rfc7519) for confirming the email
-pub type ConfirmToken = String;
-
 // https://tools.ietf.org/html/rfc6749#section-4.3
-#[derive(Serialize, Deserialize, Debug)]
+#[derive(Serialize, Deserialize, Debug, PartialEq)]
 pub struct PasswordGrantRequest<'a> {
     pub name: &'a str,
     pub password: &'a str,
-    pub client_id: &'a str,
 }
 
 // https://tools.ietf.org/html/rfc6749#section-4.1.4
 #[derive(Default, Serialize, Deserialize, Debug)]
 pub struct AccessTokenResponse {
-    pub access_token: AccessToken,
+    pub access_token: String,
     pub token_type: String, // Allows "bearer"
     pub expires_in: i64,
-    pub refresh_token: RefreshToken,
+    pub refresh_token: String,
 }
 
 #[derive(Debug, Serialize, Deserialize)]
@@ -68,7 +60,7 @@ struct AccessTokenClaim {
 }
 
 // https://tools.ietf.org/html/rfc6749#section-6
-#[derive(Serialize, Deserialize, Debug)]
+#[derive(Serialize, Deserialize, Debug, PartialEq)]
 pub struct RefreshGrantRequest<'a> {
     pub refresh_token: &'a str,
 }
@@ -88,12 +80,12 @@ pub struct RegisterRequest<'a> {
 
 #[derive(Serialize, Deserialize, Debug)]
 pub struct RegisterResponse {
-    pub confirm_token: ConfirmToken,
+    pub confirm_token: String,
 }
 
 #[derive(Serialize, Deserialize, Debug)]
-pub struct ConfirmNewUserRequest {
-    pub confirm_token: ConfirmToken,
+pub struct ConfirmNewUserRequest<'a> {
+    pub confirm_token: &'a str,
 }
 
 #[derive(Serialize, Deserialize, Debug)]
@@ -106,8 +98,8 @@ struct ConfirmTokenClaim {
 }
 
 #[derive(Serialize, Deserialize, Debug)]
-pub struct CurrentUserRequest {
-    pub access_token: AccessToken,
+pub struct CurrentUserRequest<'a> {
+    pub access_token: &'a str,
 }
 
 // https://schema.org/Person
