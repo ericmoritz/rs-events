@@ -70,7 +70,7 @@ pub fn run() {
                             .ok_or(RunError::MissingConfirmToken)
                     );
                     let req = user::ConfirmNewUserRequest{
-                        confirm_token: confirm_token
+                        confirm_token: &confirm_token
                     };
                     user_service.confirm_new_user(&req)
                         .map(Response::from)
@@ -104,7 +104,7 @@ pub fn run() {
                         .unwrap_or("");
 
                     let req = user::CurrentUserRequest{
-                        access_token: String::from(access_token)
+                        access_token: access_token,
                     };
                     user_service.current_user(&req)
                         .map(Response::from)

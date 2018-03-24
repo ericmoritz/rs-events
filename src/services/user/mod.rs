@@ -37,13 +37,6 @@ pub trait UserService {
     fn current_user(&self, request: &CurrentUserRequest) -> Result<CurrentUserResponse, ServiceError>;
 }
 
-// https://tools.ietf.org/html/rfc6749#section-4.2.2
-pub type AccessToken = String;
-// https://tools.ietf.org/html/rfc6749#section-4.2.2
-pub type RefreshToken = String;
-// Probably a [JWT](https://tools.ietf.org/html/rfc7519) for confirming the email
-pub type ConfirmToken = String;
-
 // https://tools.ietf.org/html/rfc6749#section-4.3
 #[derive(Serialize, Deserialize, Debug, PartialEq)]
 pub struct PasswordGrantRequest<'a> {
@@ -54,10 +47,10 @@ pub struct PasswordGrantRequest<'a> {
 // https://tools.ietf.org/html/rfc6749#section-4.1.4
 #[derive(Default, Serialize, Deserialize, Debug)]
 pub struct AccessTokenResponse {
-    pub access_token: AccessToken,
+    pub access_token: String,
     pub token_type: String, // Allows "bearer"
     pub expires_in: i64,
-    pub refresh_token: RefreshToken,
+    pub refresh_token: String,
 }
 
 #[derive(Debug, Serialize, Deserialize)]
@@ -87,12 +80,12 @@ pub struct RegisterRequest<'a> {
 
 #[derive(Serialize, Deserialize, Debug)]
 pub struct RegisterResponse {
-    pub confirm_token: ConfirmToken,
+    pub confirm_token: String,
 }
 
 #[derive(Serialize, Deserialize, Debug)]
-pub struct ConfirmNewUserRequest {
-    pub confirm_token: ConfirmToken,
+pub struct ConfirmNewUserRequest<'a> {
+    pub confirm_token: &'a str,
 }
 
 #[derive(Serialize, Deserialize, Debug)]
@@ -105,8 +98,8 @@ struct ConfirmTokenClaim {
 }
 
 #[derive(Serialize, Deserialize, Debug)]
-pub struct CurrentUserRequest {
-    pub access_token: AccessToken,
+pub struct CurrentUserRequest<'a> {
+    pub access_token: &'a str,
 }
 
 // https://schema.org/Person

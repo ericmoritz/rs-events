@@ -5,7 +5,7 @@ extern crate failure;
 
 use chrono::{DateTime, Utc};
 use failure::Error;
-use super::user;
+
 
 pub trait EventService {
     
@@ -112,7 +112,7 @@ pub struct Collection<T> {
 }
 
 #[derive(Serialize, Deserialize, Debug)]
-pub struct RsvpForEventRequest {
+pub struct RsvpForEventRequest<'a> {
     // The access_token retrieved using the user service
-    access_token: user::AccessToken,    
+    access_token: &'a str,    
 }
