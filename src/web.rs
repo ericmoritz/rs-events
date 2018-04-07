@@ -4,7 +4,6 @@ use rouille;
 use rouille::input::post;
 use std::io;
 use services::user;
-use services::user::UserService;
 use models::user::{Model as UserModel, UserModel as UserModelTrait};
 use db;
 use uuid::Uuid;
@@ -183,7 +182,7 @@ impl From<user::ServiceError> for Response {
             user::ServiceError::InvalidConfirmToken => Response::text("InvalidConfirmToken").with_status_code(400),
             user::ServiceError::PermissionDenied => Response::text("").with_status_code(403),
             user::ServiceError::UserExists => Response::text("UserExists").with_status_code(403),
-            user::ServiceError::Other => Response::text("").with_status_code(500),
+            user::ServiceError::DBError(_) => Response::text("").with_status_code(500),
         }
     }
 }
