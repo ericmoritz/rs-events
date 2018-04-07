@@ -5,14 +5,15 @@ use std::fmt;
 use uuid::Uuid;
 use diesel;
 
-/// ServiceError are errors that can happen with the service    
+pub trait Response {}
+
+/// ServiceError are errors that can happen with the service
 #[derive(Debug, Fail)]
 pub enum ServiceError {
     InvalidConfirmToken,
     PermissionDenied,
     UserExists,
     DBError(diesel::result::Error),
-
 }
 
 impl From<diesel::result::Error> for ServiceError {
@@ -80,6 +81,7 @@ pub struct ConfirmNewUserRequest<'a> {
 
 #[derive(Serialize, Deserialize, Debug)]
 pub struct ConfirmNewUserResponse;
+impl Response for ConfirmNewUserResponse {}
 
 #[derive(Debug, Default, Serialize, Deserialize)]
 struct ConfirmTokenClaim {
@@ -102,3 +104,4 @@ pub struct CurrentUserResponse {
     // https://schema.org/Person
     pub email: String,
 }
+impl Response for CurrentUserResponse {}

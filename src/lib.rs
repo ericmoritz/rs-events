@@ -1,15 +1,19 @@
-#[macro_use] extern crate serde_derive;
-#[macro_use] extern crate failure;
-#[macro_use] extern crate diesel;
-#[macro_use] extern crate rouille;
+#[macro_use]
+extern crate diesel;
+#[macro_use]
+extern crate failure;
+#[macro_use]
+extern crate rouille;
+#[macro_use]
+extern crate serde_derive;
 
 extern crate chrono;
-extern crate uuid;
-extern crate jsonwebtoken;
 extern crate crypto;
+extern crate dotenv;
+extern crate jsonwebtoken;
 extern crate libpasta;
 extern crate serde;
-extern crate dotenv;
+extern crate uuid;
 
 pub mod services;
 pub mod models;
