@@ -3,38 +3,28 @@ pub mod service;
 
 use std::fmt;
 use uuid::Uuid;
+use diesel;
 
-
+/// ServiceError are errors that can happen with the service    
 #[derive(Debug, Fail)]
 pub enum ServiceError {
     InvalidConfirmToken,
     PermissionDenied,
     UserExists,
-    Other,
+    DBError(diesel::result::Error),
+
+}
+
+impl From<diesel::result::Error> for ServiceError {
+    fn from(it: diesel::result::Error) -> Self {
+        ServiceError::DBError(it)
+    }
 }
 
 impl fmt::Display for ServiceError {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
         write!(f, "{:?}", self)
     }
-}
-
-// UserService is the API of the users service
-pub trait UserService {
-    // login is called to get an access token using a un/pw
-    fn password_grant(&self, request: &PasswordGrantRequest) -> Result<AccessTokenResponse, ServiceError>;
-
-    // refresh_token_grant is called to get a new access token
-    fn refresh_token_grant(&self, request: &RefreshGrantRequest) -> Result<AccessTokenResponse, ServiceError>;
-
-    // register is called when registering a new user
-    fn register(&self, request: &RegisterRequest) -> Result<RegisterResponse, ServiceError>;
-
-    // confirm_new_user
-    fn confirm_new_user(&self, request: &ConfirmNewUserRequest) -> Result<ConfirmNewUserResponse, ServiceError>;
-
-    // Get the user for a request token
-    fn current_user(&self, request: &CurrentUserRequest) -> Result<CurrentUserResponse, ServiceError>;
 }
 
 // https://tools.ietf.org/html/rfc6749#section-4.3
