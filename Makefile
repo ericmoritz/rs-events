@@ -1,7 +1,7 @@
 all: src/schema.rs test lint acceptance
 
 doc:
-	cargo doc
+	cargo doc --open
 
 test: 
 	cargo test
