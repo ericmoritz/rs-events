@@ -109,7 +109,7 @@ pub struct RegisterResponse {
 
 /// used to confirm the new user
 ///
-/// The confirm_token is the same confirm token that was given out after registering
+/// The `confirm_token` is the same confirm token that was given out after registering
 
 #[derive(Serialize, Deserialize, Debug)]
 pub struct ConfirmNewUserRequest<'a> {
