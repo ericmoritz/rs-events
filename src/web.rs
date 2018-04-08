@@ -15,11 +15,6 @@ use std::iter::FromIterator;
 use std::str::FromStr;
 use uuid::Uuid;
 
-#[derive(Serialize, Debug)]
-struct Status<'a> {
-    pub status: &'a str,
-}
-
 //
 // Runs a web server that passes the BDD tests
 //
@@ -35,26 +30,23 @@ pub fn run() {
 
                 (GET)  (/status) => { status(user_model) },
                 (POST) (/oauth/register) => { oauth_register(user_service, request) },
-                (GET)  (/oauth/register/confirm) => {
-                    oauth_register_confirm(user_service, request) },
+                (GET)  (/oauth/register/confirm) => { oauth_register_confirm(user_service, request) },
                 (POST) (/oauth/token) => { oauth_token(user_service, request) },
-
-                (GET) (/oauth/me) => {
-                    let access_token = request.header("Authorization")
-                        .and_then(move |x| x.get(7..)) // Get everything after "Bearer "
-                        .unwrap_or("");
-
-                    let req = user::CurrentUserRequest{access_token};
-                    user_service.current_user(&req)
-                        .map(Response::from)
-                        .unwrap_or_else(Response::from)
-                },
+                (GET)  (/oauth/me) => { me(user_service, request) },
                 _ => Response::empty_404()
             )
         })
     })
 }
+//
+// Handlers
+//
+#[derive(Serialize, Debug)]
+struct Status<'a> {
+    pub status: &'a str,
+}
 
+/// this is the status endpoint
 fn status(user_model: &UserModel) -> Response {
     let status = user_model
         .find(&Uuid::new_v4())
@@ -64,14 +56,18 @@ fn status(user_model: &UserModel) -> Response {
     Response::json(&status)
 }
 
+#[derive(Deserialize)]
+struct RegisterForm {
+    name: String,
+    password: String,
+    email: String,
+}
+
+/// this is the user registration endpoint
+///
+/// This accepts a json POST of [`RegisterForm`]
 fn oauth_register(user_service: &UserService, request: &Request) -> Response {
-    #[derive(Deserialize)]
-    struct Json {
-        name: String,
-        password: String,
-        email: String,
-    }
-    let data: Json = try_or_400!(rouille::input::json_input(request));
+    let data: RegisterForm = try_or_400!(rouille::input::json_input(request));
 
     let req = user::RegisterRequest {
         name: &data.name,
@@ -84,11 +80,14 @@ fn oauth_register(user_service: &UserService, request: &Request) -> Response {
         .unwrap_or_else(Response::from)
 }
 
+/// this is the user confirmation endpoint
+///
+/// This is a GET request for a query string of `?confirm_token`
 fn oauth_register_confirm(user_service: &UserService, request: &Request) -> Response {
     let confirm_token: String = try_or_400!(
         request
             .get_param("confirm_token")
-            .ok_or(RunError::MissingConfirmToken)
+            .ok_or(WebError::MissingConfirmToken)
     );
     let req = user::ConfirmNewUserRequest {
         confirm_token: &confirm_token,
@@ -99,6 +98,13 @@ fn oauth_register_confirm(user_service: &UserService, request: &Request) -> Resp
         .unwrap_or_else(Response::from)
 }
 
+/// this is the oauth token endpoint for making password or refresh grants against
+///
+/// This follows the protocol set up by the following specs
+///
+///  - [password grant](https://tools.ietf.org/html/rfc6749#section-4.3.2)
+///  - [refresh grant](https://tools.ietf.org/html/rfc6749#section-6)
+///
 fn oauth_token(user_service: &UserService, request: &Request) -> Response {
     let form = try_or_400!(post::raw_urlencoded_post_input(request));
     let grant_type = try_or_400!(find_grant_type(&form));
@@ -121,6 +127,23 @@ fn oauth_token(user_service: &UserService, request: &Request) -> Response {
     }
 }
 
+/// The current user handler
+///
+/// This requires a `Authorization: Bearer {access_token}` header to make the request
+fn me(user_service: &UserService, request: &Request) -> Response {
+    let access_token = request.header("Authorization")
+        .and_then(move |x| x.get(7..)) // Get everything after "Bearer "
+        .unwrap_or("");
+
+    let req = user::CurrentUserRequest { access_token };
+    user_service
+        .current_user(&req)
+        .map(Response::from)
+        .unwrap_or_else(Response::from)
+}
+
+// Cenverters
+//
 impl From<user::CurrentUserResponse> for Response {
     fn from(result: user::CurrentUserResponse) -> Self {
         Response::json(&result)
@@ -146,10 +169,10 @@ impl From<user::RegisterResponse> for Response {
 }
 
 ///
-/// This is a private Error type for things that can go wrong in run()
+/// This is a private Error type for things that can go wrong
 ///
 #[derive(Debug, PartialEq)]
-enum RunError {
+enum WebError {
     MissingConfirmToken,
     MissingPassword,
     MissingUsername,
@@ -157,15 +180,15 @@ enum RunError {
     InvalidGrantType,
 }
 
-impl fmt::Display for RunError {
+impl fmt::Display for WebError {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
         write!(f, "{:?}", self)
     }
 }
 
-impl Error for RunError {
+impl Error for WebError {
     fn description(&self) -> &str {
-        use self::RunError::*;
+        use self::WebError::*;
 
         match *self {
             MissingUsername => "missing username",
@@ -200,13 +223,13 @@ enum GrantType {
 }
 
 impl FromStr for GrantType {
-    type Err = RunError;
+    type Err = WebError;
 
     fn from_str(s: &str) -> Result<Self, Self::Err> {
         match s {
             "password" => Ok(GrantType::Password),
             "refresh_token" => Ok(GrantType::Refresh),
-            _ => Err(RunError::InvalidGrantType),
+            _ => Err(WebError::InvalidGrantType),
         }
     }
 }
@@ -226,13 +249,13 @@ fn test_grant_type_from_str() {
 /// Finds the `grant_type` in the Vector of form fields
 ///
 type Fields = [(String, String)];
-fn find_grant_type(fields: &Fields) -> Result<GrantType, RunError> {
+fn find_grant_type(fields: &Fields) -> Result<GrantType, WebError> {
     for &(ref k, ref v) in fields.iter() {
         if k == "grant_type" {
             return GrantType::from_str(v);
         }
     }
-    Err(RunError::InvalidGrantType)
+    Err(WebError::InvalidGrantType)
 }
 #[test]
 fn test_find_grant_type() {
@@ -256,7 +279,7 @@ fn test_find_grant_type() {
 
     assert_eq!(
         find_grant_type(&vec![("x".into(), "y".into()), ("a".into(), "b".into())]).unwrap_err(),
-        RunError::InvalidGrantType
+        WebError::InvalidGrantType
     );
 }
 
@@ -273,10 +296,10 @@ fn form_to_map(fields: &Fields) -> HashMap<&str, &str> {
 ///
 fn form_to_password_grant(
     fields: &[(String, String)],
-) -> Result<user::PasswordGrantRequest, RunError> {
+) -> Result<user::PasswordGrantRequest, WebError> {
     let fields = form_to_map(fields);
-    let username = fields.get("username").ok_or(RunError::MissingUsername)?;
-    let password = fields.get("password").ok_or(RunError::MissingPassword)?;
+    let username = fields.get("username").ok_or(WebError::MissingUsername)?;
+    let password = fields.get("password").ok_or(WebError::MissingPassword)?;
 
     Ok(user::PasswordGrantRequest { username, password })
 }
@@ -296,26 +319,26 @@ fn test_form_to_password_grant() {
 
     assert_eq!(
         form_to_password_grant(&vec![]).unwrap_err(),
-        RunError::MissingUsername
+        WebError::MissingUsername
     );
 
     assert_eq!(
         form_to_password_grant(&vec![("username".into(), "test-user".into())]).unwrap_err(),
-        RunError::MissingPassword
+        WebError::MissingPassword
     );
 
     assert_eq!(
         form_to_password_grant(&vec![("password".into(), "test-pass".into())]).unwrap_err(),
-        RunError::MissingUsername
+        WebError::MissingUsername
     );
 }
 
 /// Converts the Form Fields into a `RefreshGrantRequest`
-fn form_to_refresh_grant(fields: &Fields) -> Result<user::RefreshGrantRequest, RunError> {
+fn form_to_refresh_grant(fields: &Fields) -> Result<user::RefreshGrantRequest, WebError> {
     let fields = form_to_map(fields);
     let token = fields
         .get("refresh_token")
-        .ok_or(RunError::MissingRefreshToken)?;
+        .ok_or(WebError::MissingRefreshToken)?;
 
     Ok(user::RefreshGrantRequest {
         refresh_token: token,
@@ -335,6 +358,6 @@ fn test_form_to_refresh_grant() {
 
     assert_eq!(
         form_to_refresh_grant(&vec![]).unwrap_err(),
-        RunError::MissingRefreshToken
+        WebError::MissingRefreshToken
     );
 }
