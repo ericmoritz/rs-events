@@ -6,7 +6,7 @@ use rouille;
 use rouille::input::post;
 use rouille::{Request, Response};
 use services::user;
-use services::user::service::Service as UserService;
+use services::user::Service as UserService;
 use std::collections::HashMap;
 use std::error::Error;
 use std::fmt;
@@ -275,10 +275,10 @@ fn form_to_password_grant(
     fields: &[(String, String)],
 ) -> Result<user::PasswordGrantRequest, RunError> {
     let fields = form_to_map(fields);
-    let name = fields.get("username").ok_or(RunError::MissingUsername)?;
+    let username = fields.get("username").ok_or(RunError::MissingUsername)?;
     let password = fields.get("password").ok_or(RunError::MissingPassword)?;
 
-    Ok(user::PasswordGrantRequest { name, password })
+    Ok(user::PasswordGrantRequest { username, password })
 }
 #[test]
 fn test_form_to_password_grant() {
@@ -289,7 +289,7 @@ fn test_form_to_password_grant() {
             ("password".into(), "test-password".into()),
         ]).unwrap(),
         user::PasswordGrantRequest {
-            name: "test-user".into(),
+            username: "test-user".into(),
             password: "test-password".into(),
         }
     );
