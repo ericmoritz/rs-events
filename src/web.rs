@@ -89,11 +89,11 @@ fn oauth_register_confirm(user_service: &UserService, request: &Request) -> Resp
             .get_param("confirm_token")
             .ok_or(WebError::MissingConfirmToken)
     );
-    let req = user::ConfirmNewUserRequest {
+    let req = &user::ConfirmNewUserRequest {
         confirm_token: &confirm_token,
     };
     user_service
-        .confirm_new_user(&req)
+        .confirm_new_user(req)
         .map(Response::from)
         .unwrap_or_else(Response::from)
 }
@@ -106,21 +106,21 @@ fn oauth_register_confirm(user_service: &UserService, request: &Request) -> Resp
 ///  - [refresh grant](https://tools.ietf.org/html/rfc6749#section-6)
 ///
 fn oauth_token(user_service: &UserService, request: &Request) -> Response {
-    let form = try_or_400!(post::raw_urlencoded_post_input(request));
-    let grant_type = try_or_400!(find_grant_type(&form));
+    let form = &try_or_400!(post::raw_urlencoded_post_input(request));
+    let grant_type = try_or_400!(find_grant_type(form));
     match grant_type {
         GrantType::Password => {
-            let req = try_or_400!(form_to_password_grant(&form));
+            let req = &try_or_400!(form_to_password_grant(form));
             user_service
-                .password_grant(&req)
+                .password_grant(req)
                 .map(Response::from)
                 .unwrap_or_else(Response::from)
         }
         GrantType::Refresh => {
-            let req = try_or_400!(form_to_refresh_grant(&form));
+            let req = &try_or_400!(form_to_refresh_grant(form));
 
             user_service
-                .refresh_token_grant(&req)
+                .refresh_token_grant(req)
                 .map(Response::from)
                 .unwrap_or_else(Response::from)
         }
@@ -135,9 +135,9 @@ fn me(user_service: &UserService, request: &Request) -> Response {
         .and_then(move |x| x.get(7..)) // Get everything after "Bearer "
         .unwrap_or("");
 
-    let req = user::CurrentUserRequest { access_token };
+    let req = &user::CurrentUserRequest { access_token };
     user_service
-        .current_user(&req)
+        .current_user(req)
         .map(Response::from)
         .unwrap_or_else(Response::from)
 }
