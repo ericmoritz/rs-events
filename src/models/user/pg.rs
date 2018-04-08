@@ -1,9 +1,9 @@
-//! implements an IOModel for Postgres
-use diesel::prelude::*;
-use diesel;
-use uuid::Uuid;
-use libpasta::{hash_password, verify_password};
+//! implements an `IOModel` for Postgres
 use super::{IOModel, NewUser, User};
+use diesel;
+use diesel::prelude::*;
+use libpasta::{hash_password, verify_password};
+use uuid::Uuid;
 
 pub struct PgModel<'a> {
     // TODO: Make this generic
@@ -15,7 +15,7 @@ impl<'a> PgModel<'a> {
     }
 }
 impl<'a> IOModel for PgModel<'a> {
-    fn find(&self, user_id: Uuid) -> QueryResult<Option<User>> {
+    fn find(&self, user_id: &Uuid) -> QueryResult<Option<User>> {
         use schema::users::dsl::*;
 
         users
@@ -25,7 +25,7 @@ impl<'a> IOModel for PgModel<'a> {
             .optional()
     }
 
-    fn confirm(&self, user_id: Uuid) -> QueryResult<usize> {
+    fn confirm(&self, user_id: &Uuid) -> QueryResult<usize> {
         use schema::users::dsl::*;
         diesel::update(users)
             .filter(id.eq(user_id))
@@ -52,14 +52,14 @@ impl<'a> IOModel for PgModel<'a> {
         }))
     }
 
-    fn create(&self, new_user: NewUser) -> QueryResult<Option<User>> {
+    fn create(&self, new_user: &NewUser) -> QueryResult<Option<User>> {
         use schema::users::dsl::*;
 
         // TODO: move this to the trait
         let hash = hash_password(String::from(new_user.password));
-        let new_user = NewUser {
+        let new_user = &NewUser {
             password: &hash,
-            ..new_user
+            ..*new_user
         };
 
         self.conn.transaction(|| {
@@ -71,7 +71,7 @@ impl<'a> IOModel for PgModel<'a> {
             match user {
                 Some(_) => Ok(None),
                 None => diesel::insert_into(users)
-                    .values(&new_user)
+                    .values(new_user)
                     .get_result::<User>(self.conn)
                     .optional(),
             }

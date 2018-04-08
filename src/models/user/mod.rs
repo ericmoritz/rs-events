@@ -1,6 +1,7 @@
+//! Diesel model for the User table
 use diesel::prelude::*;
-use uuid::Uuid;
 use schema::users;
+use uuid::Uuid;
 
 //# Modules
 
@@ -8,11 +9,11 @@ pub mod pg;
 
 //# Structs
 
-/// NewUser is the struct that is used for storing a new user
+/// `NewUser` is the struct that is used for storing a new user
 #[derive(Insertable)]
 #[table_name = "users"]
 pub struct NewUser<'a> {
-    pub id: Uuid,
+    pub id: &'a Uuid,
     pub name: &'a str,
     pub email: &'a str,
     pub password: &'a str,
@@ -29,18 +30,18 @@ pub struct User {
 }
 
 //# Traits
-
+//TODO: YAGNI this, we don't need it until we write tests
 /// This trait is the IO interface
 pub trait IOModel {
     /// Find a confirmed user
-    fn find(&self, user_id: Uuid) -> QueryResult<Option<User>>;
+    fn find(&self, user_id: &Uuid) -> QueryResult<Option<User>>;
 
     /// Confirm a user
-    fn confirm(&self, user_id: Uuid) -> QueryResult<usize>;
+    fn confirm(&self, user_id: &Uuid) -> QueryResult<usize>;
 
     /// Verify a login
     fn verify_login(&self, username: &str, pass: &str) -> QueryResult<Option<User>>;
 
     /// Create a new unconfirmed user
-    fn create(&self, user: NewUser) -> QueryResult<Option<User>>;
+    fn create(&self, new_user: &NewUser) -> QueryResult<Option<User>>;
 }

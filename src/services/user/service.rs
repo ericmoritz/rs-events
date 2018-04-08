@@ -35,7 +35,7 @@ impl<'a> Service<'a> {
         &self,
         request: &RefreshGrantRequest,
     ) -> Result<AccessTokenResponse, ServiceError> {
-        let id = validate_refresh_token(self.secret_key, request.refresh_token)
+        let id = &validate_refresh_token(self.secret_key, request.refresh_token)
             .ok_or(ServiceError::PermissionDenied)?;
 
         let user = self.model.find(id)?.ok_or(ServiceError::PermissionDenied)?;
@@ -46,13 +46,13 @@ impl<'a> Service<'a> {
     // register is called when registering a new user
     pub fn register(&self, request: &RegisterRequest) -> Result<RegisterResponse, ServiceError> {
         let new_user = NewUser {
-            id: Uuid::new_v4(),
+            id: &Uuid::new_v4(),
             name: request.name,
             password: request.password,
             email: request.email,
         };
         let user = self.model
-            .create(new_user)?
+            .create(&new_user)?
             .ok_or(ServiceError::UserExists)?;
 
         Ok(RegisterResponse {
@@ -71,7 +71,7 @@ impl<'a> Service<'a> {
         &self,
         request: &ConfirmNewUserRequest,
     ) -> Result<ConfirmNewUserResponse, ServiceError> {
-        let id = validate_confirm_token(self.secret_key, request.confirm_token)
+        let id = &validate_confirm_token(self.secret_key, request.confirm_token)
             .ok_or(ServiceError::InvalidConfirmToken)?;
 
         self.model.confirm(id)?;
@@ -84,7 +84,7 @@ impl<'a> Service<'a> {
         &self,
         request: &CurrentUserRequest,
     ) -> Result<CurrentUserResponse, ServiceError> {
-        let id = validate_access_token(self.secret_key, request.access_token)
+        let id = &validate_access_token(self.secret_key, request.access_token)
             .ok_or(ServiceError::PermissionDenied)?;
         let user = self.model.find(id)?.ok_or(ServiceError::PermissionDenied)?;
 

@@ -1,13 +1,13 @@
-// This serves as the public API for the events service
+//!  This serves as the public API for the events service
 pub mod service;
 
+use diesel;
 use std::fmt;
 use uuid::Uuid;
-use diesel;
 
 pub trait Response {}
 
-/// ServiceError are errors that can happen with the service
+/// `ServiceError` are errors that can happen with the service
 #[derive(Debug, Fail)]
 pub enum ServiceError {
     InvalidConfirmToken,

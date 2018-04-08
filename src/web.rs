@@ -1,19 +1,19 @@
 //! This is the initial MVP of the events service to get the BDD tests to work
-use rouille::{Request, Response};
-use rouille::input::post;
-use rouille;
-use std::io;
-use services::user;
+use db;
 use models::user::IOModel;
 use models::user::pg::PgModel as UserModel;
+use rouille;
+use rouille::input::post;
+use rouille::{Request, Response};
+use services::user;
 use services::user::service::Service as UserService;
-use db;
-use uuid::Uuid;
+use std::collections::HashMap;
 use std::error::Error;
 use std::fmt;
-use std::str::FromStr;
-use std::collections::HashMap;
+use std::io;
 use std::iter::FromIterator;
+use std::str::FromStr;
+use uuid::Uuid;
 
 #[derive(Serialize, Debug)]
 struct Status<'a> {
@@ -57,7 +57,7 @@ pub fn run() {
 
 fn status(user_model: &UserModel) -> Response {
     let status = user_model
-        .find(Uuid::new_v4())
+        .find(&Uuid::new_v4())
         .map(|_| Status { status: "up" })
         .unwrap_or_else(|_| Status { status: "down" });
 
@@ -190,7 +190,7 @@ impl From<user::ServiceError> for Response {
 }
 
 ///
-/// This is a enum to represent the grant_type strings, "password" and "refresh_token"
+/// This is a enum to represent the `grant_type` strings, `"password"` and `"refresh_token"`
 ///
 /// Note: We may want to move this to the service module
 #[derive(Debug, PartialEq)]
@@ -215,7 +215,7 @@ fn test_grant_type_from_str() {
     assert_eq!(
         GrantType::from_str("password").unwrap(),
         GrantType::Password
-    );
+    )
 }
 
 ///
@@ -223,12 +223,13 @@ fn test_grant_type_from_str() {
 ///
 
 ///
-/// Finds the grant_type in the Vector of form fields
+/// Finds the `grant_type` in the Vector of form fields
 ///
-fn find_grant_type(fields: &Vec<(String, String)>) -> Result<GrantType, RunError> {
+type Fields = [(String, String)];
+fn find_grant_type(fields: &Fields) -> Result<GrantType, RunError> {
     for &(ref k, ref v) in fields.iter() {
         if k == "grant_type" {
-            return GrantType::from_str(&v);
+            return GrantType::from_str(v);
         }
     }
     Err(RunError::InvalidGrantType)
@@ -259,24 +260,25 @@ fn test_find_grant_type() {
     );
 }
 
-///
-/// Converts the Form Fields to a PasswordGrantRequest
-///
-fn form_to_password_grant<'a>(
-    fields: &'a Vec<(String, String)>,
-) -> Result<user::PasswordGrantRequest<'a>, RunError> {
-    let fields: HashMap<&str, &str> = HashMap::from_iter(fields.iter().map(|&(ref k, ref v)| {
+fn form_to_map(fields: &Fields) -> HashMap<&str, &str> {
+    HashMap::from_iter(fields.iter().map(|&(ref k, ref v)| {
         let k: &str = k;
         let v: &str = v;
         (k, v)
-    }));
+    }))
+}
+
+///
+/// Converts the Form Fields to a `PasswordGrantRequest`
+///
+fn form_to_password_grant(
+    fields: &[(String, String)],
+) -> Result<user::PasswordGrantRequest, RunError> {
+    let fields = form_to_map(fields);
     let name = fields.get("username").ok_or(RunError::MissingUsername)?;
     let password = fields.get("password").ok_or(RunError::MissingPassword)?;
 
-    Ok(user::PasswordGrantRequest {
-        name: name,
-        password: password,
-    })
+    Ok(user::PasswordGrantRequest { name, password })
 }
 #[test]
 fn test_form_to_password_grant() {
@@ -308,18 +310,9 @@ fn test_form_to_password_grant() {
     );
 }
 
-///
-/// Converts the Form Fields into a RefreshGrantRequest
-///
-fn form_to_refresh_grant<'a>(
-    fields: &'a Vec<(String, String)>,
-) -> Result<user::RefreshGrantRequest<'a>, RunError> {
-    let fields: HashMap<&str, &str> = HashMap::from_iter(fields.iter().map(|&(ref k, ref v)| {
-        let k: &str = k;
-        let v: &str = v;
-        (k, v)
-    }));
-
+/// Converts the Form Fields into a `RefreshGrantRequest`
+fn form_to_refresh_grant(fields: &Fields) -> Result<user::RefreshGrantRequest, RunError> {
+    let fields = form_to_map(fields);
     let token = fields
         .get("refresh_token")
         .ok_or(RunError::MissingRefreshToken)?;

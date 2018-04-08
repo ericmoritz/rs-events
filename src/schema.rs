@@ -1,4 +1,6 @@
+//! Diesel Schema
 table! {
+    /// The users table
     users (id) {
         id -> Uuid,
         name -> Varchar,
