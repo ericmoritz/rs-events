@@ -1,5 +1,2 @@
-extern crate chrono;
-extern crate failure;
-
+//! API for the various services
 pub mod user;
-pub mod event;

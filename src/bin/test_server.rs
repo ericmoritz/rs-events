@@ -13,7 +13,7 @@ fn main() {
         .arg("run")
         .output()
         .expect("Unable to run migrations");
-        
+
     // Then start the web server
     web::run();
 }
