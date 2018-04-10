@@ -1,13 +1,15 @@
 //!  This serves as the public API for the events service
-use uuid::Uuid;
+use actix::prelude::*;
+use actix_web::*;
 use diesel;
-use std::fmt;
-use models::user::{NewUser, User};
+use jsonwebtoken as jwt;
 use models::user::IOModel;
 use models::user::pg::PgModel;
-use jsonwebtoken as jwt;
-use std::default::Default;
+use models::user::{NewUser, User};
 use serde::ser::Serialize;
+use std::default::Default;
+use std::fmt;
+use uuid::Uuid;
 
 /// errors that can happen with the service
 ///
@@ -35,9 +37,21 @@ impl fmt::Display for ServiceError {
 ///
 /// See: [rfc-6749 section-4.3.2](https://tools.ietf.org/html/rfc6749#section-4.3.2)
 #[derive(Serialize, Deserialize, Debug, PartialEq)]
-pub struct PasswordGrantRequest<'a> {
-    pub username: &'a str,
-    pub password: &'a str,
+pub struct PasswordGrantRequest {
+    pub username: String,
+    pub password: String,
+}
+
+impl Message for PasswordGrantRequest {
+    type Result = Result<AccessTokenResponse, ServiceError>;
+}
+
+impl Handler<PasswordGrantRequest> for Service {
+    type Result = Result<AccessTokenResponse, ServiceError>;
+
+    fn handle(&mut self, request: PasswordGrantRequest, _: &mut Self::Context) -> Self::Result {
+        self.password_grant(&request)
+    }
 }
 
 /// represents an OAuth 2.0 Access Token Response
@@ -72,9 +86,21 @@ struct AccessTokenClaim {
 ///
 /// See: [RFC-6749 Section 6](https://tools.ietf.org/html/rfc6749#section-6)
 #[derive(Serialize, Deserialize, Debug, PartialEq)]
-pub struct RefreshGrantRequest<'a> {
+pub struct RefreshGrantRequest {
     /// The refresh token that was returned by the AccessTokenResponse
-    pub refresh_token: &'a str,
+    pub refresh_token: String,
+}
+
+impl Message for RefreshGrantRequest {
+    type Result = Result<AccessTokenResponse, ServiceError>;
+}
+
+impl Handler<RefreshGrantRequest> for Service {
+    type Result = Result<AccessTokenResponse, ServiceError>;
+
+    fn handle(&mut self, request: RefreshGrantRequest, _: &mut Self::Context) -> Self::Result {
+        self.refresh_token_grant(&request)
+    }
 }
 
 /// represents the data inside of the [JWT](https://en.wikipedia.org/wiki/JSON_Web_Token) for the refresh token
@@ -92,11 +118,23 @@ struct RefreshTokenClaim {
 /// It is formatted as a [schema:Person](https://schema.org/Person) with an additional
 /// `password` field.
 #[derive(Serialize, Deserialize, Debug)]
-pub struct RegisterRequest<'a> {
-    pub name: &'a str,
-    pub email: &'a str,
+pub struct RegisterRequest {
+    pub name: String,
+    pub email: String,
     /// The raw, unhashed password for the user
-    pub password: &'a str,
+    pub password: String,
+}
+
+impl Message for RegisterRequest {
+    type Result = Result<RegisterResponse, ServiceError>;
+}
+
+impl Handler<RegisterRequest> for Service {
+    type Result = Result<RegisterResponse, ServiceError>;
+
+    fn handle(&mut self, request: RegisterRequest, _: &mut Self::Context) -> Self::Result {
+        self.register(&request)
+    }
 }
 
 /// contains the confirmation token for confirming the new user
@@ -112,9 +150,21 @@ pub struct RegisterResponse {
 /// The `confirm_token` is the same confirm token that was given out after registering
 
 #[derive(Serialize, Deserialize, Debug)]
-pub struct ConfirmNewUserRequest<'a> {
+pub struct ConfirmNewUserRequest {
     /// The confirm_token that was given out after regitering
-    pub confirm_token: &'a str,
+    pub confirm_token: String,
+}
+
+impl Message for ConfirmNewUserRequest {
+    type Result = Result<ConfirmNewUserResponse, ServiceError>;
+}
+
+impl Handler<ConfirmNewUserRequest> for Service {
+    type Result = Result<ConfirmNewUserResponse, ServiceError>;
+
+    fn handle(&mut self, request: ConfirmNewUserRequest, _: &mut Self::Context) -> Self::Result {
+        self.confirm_new_user(&request)
+    }
 }
 
 /// the response from a new user request
@@ -134,9 +184,21 @@ struct ConfirmTokenClaim {
 /// used to get the data about the user that has this access token
 ///
 #[derive(Serialize, Deserialize, Debug)]
-pub struct CurrentUserRequest<'a> {
+pub struct CurrentUserRequest {
     /// This is the OAuth 2.0 access token that authorizes the current user
-    pub access_token: &'a str,
+    pub access_token: String,
+}
+
+impl Message for CurrentUserRequest {
+    type Result = Result<CurrentUserResponse, ServiceError>;
+}
+
+impl Handler<CurrentUserRequest> for Service {
+    type Result = Result<CurrentUserResponse, ServiceError>;
+
+    fn handle(&mut self, request: CurrentUserRequest, _: &mut Self::Context) -> Self::Result {
+        self.current_user(&request)
+    }
 }
 
 /// the data about the user
@@ -153,16 +215,40 @@ pub struct CurrentUserResponse {
     pub email: String,
 }
 
-/// The API for the user service
-pub struct Service<'a> {
-    // TODO: make this generic so we can mock it out
-    model: &'a PgModel<'a>,
-    secret_key: &'a [u8],
+#[derive(Serialize, Deserialize, Debug)]
+pub struct StatusRequest {}
+
+#[derive(Serialize, Deserialize, Debug)]
+pub struct StatusResponse {
+    pub status: &'static str,
 }
 
-impl<'a> Service<'a> {
+impl Message for StatusRequest {
+    type Result = Result<StatusResponse, ServiceError>;
+}
+
+impl Handler<StatusRequest> for Service {
+    type Result = Result<StatusResponse, ServiceError>;
+
+    fn handle(&mut self, _: StatusRequest, _: &mut Self::Context) -> Self::Result {
+        Ok(StatusResponse { status: "up" })
+    }
+}
+
+/// The API for the user service
+pub struct Service {
+    // TODO: make this generic so we can mock it out
+    model: PgModel,
+    secret_key: Vec<u8>,
+}
+
+impl Actor for Service {
+    type Context = SyncContext<Self>;
+}
+
+impl Service {
     /// create a new Service instance
-    pub fn new(model: &'a PgModel<'a>, secret_key: &'a [u8]) -> Service<'a> {
+    pub fn new(model: PgModel, secret_key: Vec<u8>) -> Service {
         Service { model, secret_key }
     }
 
@@ -172,10 +258,10 @@ impl<'a> Service<'a> {
         request: &PasswordGrantRequest,
     ) -> Result<AccessTokenResponse, ServiceError> {
         let user: User = self.model
-            .verify_login(request.username, request.password)?
+            .verify_login(&request.username, &request.password)?
             .ok_or(ServiceError::PermissionDenied)?;
 
-        Ok(access_token_response(self.secret_key, &user))
+        Ok(access_token_response(&self.secret_key, &user))
     }
 
     /// call to get a new access token using a refresh token
@@ -183,29 +269,29 @@ impl<'a> Service<'a> {
         &self,
         request: &RefreshGrantRequest,
     ) -> Result<AccessTokenResponse, ServiceError> {
-        let id = &validate_refresh_token(self.secret_key, request.refresh_token)
+        let id = &validate_refresh_token(&self.secret_key, &request.refresh_token)
             .ok_or(ServiceError::PermissionDenied)?;
 
         let user = self.model.find(id)?.ok_or(ServiceError::PermissionDenied)?;
 
-        Ok(access_token_response(self.secret_key, &user))
+        Ok(access_token_response(&self.secret_key, &user))
     }
 
     /// call to register a new user
     pub fn register(&self, request: &RegisterRequest) -> Result<RegisterResponse, ServiceError> {
-        let new_user = NewUser {
+        let new_user = &NewUser {
             id: &Uuid::new_v4(),
-            name: request.name,
-            password: request.password,
-            email: request.email,
+            name: &request.name,
+            password: &request.password,
+            email: &request.email,
         };
         let user = self.model
-            .create(&new_user)?
+            .create(new_user)?
             .ok_or(ServiceError::UserExists)?;
 
         Ok(RegisterResponse {
             confirm_token: encode_token(
-                self.secret_key,
+                &self.secret_key,
                 ConfirmTokenClaim {
                     sub: user.id.simple().to_string(),
                     confirm_token: true,
@@ -219,7 +305,7 @@ impl<'a> Service<'a> {
         &self,
         request: &ConfirmNewUserRequest,
     ) -> Result<ConfirmNewUserResponse, ServiceError> {
-        let id = &validate_confirm_token(self.secret_key, request.confirm_token)
+        let id = &validate_confirm_token(&self.secret_key, &request.confirm_token)
             .ok_or(ServiceError::InvalidConfirmToken)?;
 
         self.model.confirm(id)?;
@@ -232,7 +318,7 @@ impl<'a> Service<'a> {
         &self,
         request: &CurrentUserRequest,
     ) -> Result<CurrentUserResponse, ServiceError> {
-        let id = &validate_access_token(self.secret_key, request.access_token)
+        let id = &validate_access_token(&self.secret_key, &request.access_token)
             .ok_or(ServiceError::PermissionDenied)?;
         let user = self.model.find(id)?.ok_or(ServiceError::PermissionDenied)?;
 

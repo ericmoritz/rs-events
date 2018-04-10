@@ -14,7 +14,10 @@ diesel = { version = "1.0.0", features = ["postgres", "uuid"] }
 jsonwebtoken = "4.0.0"
 rust-crypto = "0.2.36"
 libpasta = "0.0.5"
-rouille = "2.1.0"
+actix = "0.5"
+actix-web = { git="https://github.com/actix/actix-web.git" }
+futures = "0.1"
+serde_urlencoded = "0.5.1"
 
 [dev-dependencies]
 galvanic-test = "0.1.3"

@@ -1,10 +1,8 @@
 //! This is the initial MVP of the events service to get the BDD tests to work
+#![allow(unused_imports)]
 use db;
 use models::user::IOModel;
 use models::user::pg::PgModel as UserModel;
-use rouille;
-use rouille::input::post;
-use rouille::{Request, Response};
 use services::user;
 use services::user::Service as UserService;
 use std::collections::HashMap;
@@ -15,6 +13,47 @@ use std::iter::FromIterator;
 use std::str::FromStr;
 use uuid::Uuid;
 
+use actix::prelude::*;
+use actix_web::{http, server, App, AsyncResponder, FutureResponse, HttpRequest, HttpResponse};
+use futures::future::Future;
+
+struct AppState {
+    user: Addr<Syn, UserService>,
+}
+
+pub fn run() {
+    let sys = actix::System::new("rs-events");
+
+    let addr = SyncArbiter::start(3, || {
+        let conn = db::connection();
+        let user_model = UserModel::new(conn);
+        UserService::new(user_model, "....".into())
+    });
+
+    server::new(move || {
+        App::with_state(AppState { user: addr.clone() })
+            .resource("/status", |r| r.method(http::Method::GET).f(status))
+    }).bind("0.0.0.0:8080")
+        .unwrap()
+        .start();
+
+    println!("Started http server: 0.0.0.0:8080");
+    let _ = sys.run();
+}
+
+fn status(req: HttpRequest<AppState>) -> FutureResponse<HttpResponse> {
+    req.state()
+        .user
+        .send(user::StatusRequest {})
+        .from_err()
+        .and_then(|res| match res {
+            Ok(x) => Ok(HttpResponse::Ok().json(x)),
+            Err(_) => Ok(HttpResponse::InternalServerError().into()),
+        })
+        .responder()
+}
+
+/*
 //
 // Runs a web server that passes the BDD tests
 //
@@ -361,3 +400,4 @@ fn test_form_to_refresh_grant() {
         WebError::MissingRefreshToken
     );
 }
+*/

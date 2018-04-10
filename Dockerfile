@@ -1,4 +1,4 @@
-FROM rust:1.23.0
+FROM rust:1.25.0
 
 RUN apt-get update
 RUN apt-get -y install libssl-dev libpq-dev default-libmysqlclient-dev libsqlite3-0 libsqlite3-dev

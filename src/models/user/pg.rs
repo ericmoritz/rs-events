@@ -5,23 +5,23 @@ use diesel::prelude::*;
 use libpasta::{hash_password, verify_password};
 use uuid::Uuid;
 
-pub struct PgModel<'a> {
+pub struct PgModel {
     // TODO: Make this generic
-    conn: &'a PgConnection,
+    conn: PgConnection,
 }
-impl<'a> PgModel<'a> {
-    pub fn new(conn: &'a PgConnection) -> Self {
+impl PgModel {
+    pub fn new(conn: PgConnection) -> Self {
         PgModel { conn }
     }
 }
-impl<'a> IOModel for PgModel<'a> {
+impl IOModel for PgModel {
     fn find(&self, user_id: &Uuid) -> QueryResult<Option<User>> {
         use schema::users::dsl::*;
 
         users
             .filter(id.eq(user_id))
             .filter(confirmed.eq(true))
-            .get_result(self.conn)
+            .get_result(&self.conn)
             .optional()
     }
 
@@ -30,7 +30,7 @@ impl<'a> IOModel for PgModel<'a> {
         diesel::update(users)
             .filter(id.eq(user_id))
             .set(confirmed.eq(true))
-            .execute(self.conn)
+            .execute(&self.conn)
     }
 
     fn verify_login(&self, username: &str, pass: &str) -> QueryResult<Option<User>> {
@@ -39,7 +39,7 @@ impl<'a> IOModel for PgModel<'a> {
         let result: Option<User> = users
             .filter(name.eq(username))
             .filter(confirmed.eq(true))
-            .get_result(self.conn)
+            .get_result(&self.conn)
             .optional()?;
 
         // TODO: move verify_password to the trait
@@ -65,14 +65,14 @@ impl<'a> IOModel for PgModel<'a> {
         self.conn.transaction(|| {
             let user = users
                 .filter(name.eq(new_user.name))
-                .get_result::<User>(self.conn)
+                .get_result::<User>(&self.conn)
                 .optional()?;
 
             match user {
                 Some(_) => Ok(None),
                 None => diesel::insert_into(users)
                     .values(new_user)
-                    .get_result::<User>(self.conn)
+                    .get_result::<User>(&self.conn)
                     .optional(),
             }
         })
