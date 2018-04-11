@@ -1,20 +1,20 @@
 //! This is the initial MVP of the events service to get the BDD tests to work
-#![allow(unused_imports)]
 use db;
-use models::user::IOModel;
+// use models::user::IOModel;
 use models::user::pg::PgModel as UserModel;
 use services::user;
-use services::user::Service as UserService;
-use std::collections::HashMap;
-use std::error::Error;
-use std::fmt;
-use std::io;
-use std::iter::FromIterator;
-use std::str::FromStr;
-use uuid::Uuid;
+use services::user::{Service as UserService, ServiceError};
+// use std::collections::HashMap;
+// use std::error::Error;
+// use std::fmt;
+// use std::io;
+// use std::iter::FromIterator;
+// use std::str::FromStr;
+// use uuid::Uuid;
 
 use actix::prelude::*;
-use actix_web::{http, server, App, AsyncResponder, FutureResponse, HttpRequest, HttpResponse};
+use actix_web::error;
+use actix_web::{http, server, App, AsyncResponder, FutureResponse, HttpResponse, Json, State};
 use futures::future::Future;
 
 struct AppState {
@@ -32,7 +32,10 @@ pub fn run() {
 
     server::new(move || {
         App::with_state(AppState { user: addr.clone() })
-            .resource("/status", |r| r.method(http::Method::GET).f(status))
+            .resource("/status", |r| r.method(http::Method::GET).with(status))
+            .resource("/oauth/register", |r| {
+                r.method(http::Method::POST).with2(oauth_register)
+            })
     }).bind("0.0.0.0:8080")
         .unwrap()
         .start();
@@ -41,16 +44,40 @@ pub fn run() {
     let _ = sys.run();
 }
 
-fn status(req: HttpRequest<AppState>) -> FutureResponse<HttpResponse> {
-    req.state()
-        .user
+// Convert the ServiceError's into actix Errors
+impl From<ServiceError> for error::Error {
+    fn from(x: ServiceError) -> Self {
+        match x {
+            ServiceError::InvalidConfirmToken => error::ErrorUnauthorized(x),
+            ServiceError::PermissionDenied => error::ErrorUnauthorized(x),
+            ServiceError::UserExists => error::ErrorConflict(x),
+            ServiceError::DBError(e) => error::ErrorInternalServerError(e),
+        }
+    }
+}
+
+fn status(state: State<AppState>) -> FutureResponse<HttpResponse> {
+    state.user
         .send(user::StatusRequest {})
-        .from_err()
-        .and_then(|res| match res {
-            Ok(x) => Ok(HttpResponse::Ok().json(x)),
-            Err(_) => Ok(HttpResponse::InternalServerError().into()),
-        })
-        .responder()
+        // Return a 500 if we can't talk to the backend
+        .map_err(error::ErrorInternalServerError)
+        .and_then(|x: Result<user::StatusResponse, ServiceError>| {
+            let res = x?;
+            Ok(HttpResponse::Ok().json(res))
+        }).responder()
+}
+
+fn oauth_register(
+    state: State<AppState>,
+    req: Json<user::RegisterRequest>,
+) -> FutureResponse<HttpResponse> {
+    state.user.send(req.0)
+        // Return a 500 if we can't talk to the backend
+        .map_err(error::ErrorInternalServerError)
+        .and_then(|x: Result<user::RegisterResponse, ServiceError>| {
+            let res = x?;
+            Ok(HttpResponse::Ok().json(res))
+        }).responder()
 }
 
 /*

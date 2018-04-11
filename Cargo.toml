@@ -15,7 +15,7 @@ jsonwebtoken = "4.0.0"
 rust-crypto = "0.2.36"
 libpasta = "0.0.5"
 actix = "0.5"
-actix-web = { git="https://github.com/actix/actix-web.git" }
+actix-web = "0.5.0"
 futures = "0.1"
 serde_urlencoded = "0.5.1"
 
