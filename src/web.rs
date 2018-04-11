@@ -57,27 +57,30 @@ impl From<ServiceError> for error::Error {
 }
 
 fn status(state: State<AppState>) -> FutureResponse<HttpResponse> {
-    state.user
+    state
+        .user
         .send(user::StatusRequest {})
-        // Return a 500 if we can't talk to the backend
-        .map_err(error::ErrorInternalServerError)
+        .from_err()
         .and_then(|x: Result<user::StatusResponse, ServiceError>| {
             let res = x?;
             Ok(HttpResponse::Ok().json(res))
-        }).responder()
+        })
+        .responder()
 }
 
 fn oauth_register(
     state: State<AppState>,
     req: Json<user::RegisterRequest>,
 ) -> FutureResponse<HttpResponse> {
-    state.user.send(req.0)
-        // Return a 500 if we can't talk to the backend
-        .map_err(error::ErrorInternalServerError)
+    state
+        .user
+        .send(req.0)
+        .from_err()
         .and_then(|x: Result<user::RegisterResponse, ServiceError>| {
             let res = x?;
             Ok(HttpResponse::Ok().json(res))
-        }).responder()
+        })
+        .responder()
 }
 
 /*
