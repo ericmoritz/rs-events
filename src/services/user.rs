@@ -6,7 +6,6 @@ use jsonwebtoken as jwt;
 use models::user::pg::PgModel;
 use models::user::IOModel;
 use models::user::{NewUser, User};
-use serde::ser::Serialize;
 use std::default::Default;
 use std::fmt;
 use uuid::Uuid;
@@ -32,8 +31,13 @@ impl Service {
     pub fn token(&self, request: &TokenRequest) -> Result<AccessTokenResponse, ServiceError> {
         let user: User = match *request {
             TokenRequest::RefreshToken { ref refresh_token } => {
-                let id = &validate_refresh_token(&self.secret_key, refresh_token)
+                let id = &TokenClaim::validate(&self.secret_key, refresh_token)
+                    .and_then(|x| match x {
+                        TokenClaim::Refresh { sub } => Some(sub),
+                        _ => None,
+                    })
                     .ok_or(ServiceError::PermissionDenied)?;
+
                 self.model.find(id)?.ok_or(ServiceError::PermissionDenied)?
             }
             TokenRequest::Password {
@@ -43,7 +47,7 @@ impl Service {
                 .verify_login(username, password)?
                 .ok_or(ServiceError::PermissionDenied)?,
         };
-        Ok(access_token_response(&self.secret_key, &user))
+        Ok(AccessTokenResponse::new(&self.secret_key, &user))
     }
 
     /// call to register a new user
@@ -54,18 +58,13 @@ impl Service {
             password: &request.password,
             email: &request.email,
         };
-        let user = self.model
+        let sub = self.model
             .create(new_user)?
-            .ok_or(ServiceError::UserExists)?;
+            .ok_or(ServiceError::UserExists)?
+            .id;
 
         Ok(RegisterResponse {
-            confirm_token: encode_token(
-                &self.secret_key,
-                ConfirmTokenClaim {
-                    sub: user.id.simple().to_string(),
-                    confirm_token: true,
-                },
-            ),
+            confirm_token: TokenClaim::Confirm { sub }.encode(&self.secret_key),
         })
     }
 
@@ -74,7 +73,11 @@ impl Service {
         &self,
         request: &ConfirmNewUserRequest,
     ) -> Result<ConfirmNewUserResponse, ServiceError> {
-        let id = &validate_confirm_token(&self.secret_key, &request.confirm_token)
+        let id = &TokenClaim::validate(&self.secret_key, &request.confirm_token)
+            .and_then(|x| match x {
+                TokenClaim::Confirm { sub } => Some(sub),
+                _ => None,
+            })
             .ok_or(ServiceError::InvalidConfirmToken)?;
 
         self.model.confirm(id)?;
@@ -87,7 +90,11 @@ impl Service {
         &self,
         request: &CurrentUserRequest,
     ) -> Result<CurrentUserResponse, ServiceError> {
-        let id = &validate_access_token(&self.secret_key, &request.access_token)
+        let id = &TokenClaim::validate(&self.secret_key, &request.access_token)
+            .and_then(|x| match x {
+                TokenClaim::Access { sub } => Some(sub),
+                _ => None,
+            })
             .ok_or(ServiceError::PermissionDenied)?;
         let user = self.model.find(id)?.ok_or(ServiceError::PermissionDenied)?;
 
@@ -160,6 +167,39 @@ pub struct AccessTokenResponse {
     pub refresh_token: String,
 }
 
+impl AccessTokenResponse {
+    fn new(key: &[u8], user: &User) -> Self {
+        let sub = user.id;
+
+        AccessTokenResponse {
+            access_token: TokenClaim::Access { sub }.encode(key),
+            refresh_token: TokenClaim::Refresh { sub }.encode(key),
+            token_type: "bearer".into(),
+            expires_in: 3600,
+        }
+    }
+}
+
+#[derive(Debug, Serialize, Deserialize)]
+#[serde(tag = "type")]
+enum TokenClaim {
+    Access { sub: Uuid },
+    Refresh { sub: Uuid },
+    Confirm { sub: Uuid },
+}
+
+impl TokenClaim {
+    fn validate(key: &[u8], token: &str) -> Option<Self> {
+        jwt::decode(token, key, &jwt::Validation::default())
+            .map(|data| data.claims)
+            .ok()
+    }
+
+    fn encode(&self, key: &[u8]) -> String {
+        jwt::encode(&jwt::Header::default(), self, key).unwrap_or_else(|_| "".into())
+    }
+}
+
 /// represents the data inside of the JWT for the access token
 ///
 #[derive(Debug, Serialize, Deserialize)]
@@ -179,6 +219,14 @@ struct RefreshTokenClaim {
     sub: String,
     /// The flag that makes the claim data a refresh token. See the explanation in [`AccessTokenClaim`]
     refresh_token: bool,
+}
+
+/// the data inside the JWT for the confirmation token
+///
+#[derive(Debug, Default, Serialize, Deserialize)]
+struct ConfirmTokenClaim {
+    sub: String,
+    confirm_token: bool,
 }
 
 /// represents the form that is needed to register a new user
@@ -241,14 +289,6 @@ impl Handler<ConfirmNewUserRequest> for Service {
 #[derive(Serialize, Deserialize, Debug)]
 pub struct ConfirmNewUserResponse;
 
-/// the data inside the JWT for the confirmation token
-///
-#[derive(Debug, Default, Serialize, Deserialize)]
-struct ConfirmTokenClaim {
-    sub: String,
-    confirm_token: bool,
-}
-
 /// used to get the data about the user that has this access token
 ///
 #[derive(Serialize, Deserialize, Debug)]
@@ -300,63 +340,5 @@ impl Handler<StatusRequest> for Service {
 
     fn handle(&mut self, _: StatusRequest, _: &mut Self::Context) -> Self::Result {
         Ok(StatusResponse { status: "up" })
-    }
-}
-
-// Internal
-
-fn validate_confirm_token(key: &[u8], token: &str) -> Option<Uuid> {
-    let token_result = jwt::decode::<ConfirmTokenClaim>(token, key, &jwt::Validation::default());
-
-    token_result.ok().and_then(|token| {
-        if token.claims.confirm_token {
-            Uuid::parse_str(&token.claims.sub).ok()
-        } else {
-            None
-        }
-    })
-}
-
-fn validate_access_token(key: &[u8], token: &str) -> Option<Uuid> {
-    if let Ok(data) = jwt::decode::<AccessTokenClaim>(token, key, &jwt::Validation::default()) {
-        if data.claims.access_token {
-            return Uuid::parse_str(&data.claims.sub).ok();
-        }
-    }
-    None
-}
-
-fn validate_refresh_token(key: &[u8], token: &str) -> Option<Uuid> {
-    if let Ok(data) = jwt::decode::<RefreshTokenClaim>(token, key, &jwt::Validation::default()) {
-        if data.claims.refresh_token {
-            return Uuid::parse_str(&data.claims.sub).ok();
-        }
-    }
-    None
-}
-
-fn encode_token<T: Serialize>(key: &[u8], claims: T) -> String {
-    // TODO: handle error correctly
-    jwt::encode(&jwt::Header::default(), &claims, key).unwrap_or_else(|_| "".into())
-}
-
-fn access_token_response(key: &[u8], user: &User) -> AccessTokenResponse {
-    AccessTokenResponse {
-        access_token: encode_token(
-            key,
-            AccessTokenClaim {
-                sub: user.id.simple().to_string(),
-                access_token: true,
-            },
-        ),
-        refresh_token: encode_token(
-            key,
-            RefreshTokenClaim {
-                sub: user.id.simple().to_string(),
-                refresh_token: true,
-            },
-        ),
-        token_type: "bearer".into(),
-        expires_in: 3600,
     }
 }
