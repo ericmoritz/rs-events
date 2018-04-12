@@ -136,5 +136,7 @@ fn access_token(x: &str) -> Option<&str> {
 }
 #[test]
 fn test_confirm_token() {
-    assert_eq!(confirm_token("Bearer xxx"), Some("xxx"));
+    assert_eq!(access_token("Bearer xxx"), Some("xxx"));
+
+    assert_eq!(access_token("Basic ...."), None);
 }
