@@ -18,7 +18,7 @@ pub fn run() {
     let sys = actix::System::new("rs-events");
 
     // TODO: Use a connection pool
-
+    // TODO: Return a useful error to the user agent
     // Create the user service
     let user_service = SyncArbiter::start(3, || {
         let conn = db::connection();

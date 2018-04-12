@@ -1,0 +1,30 @@
+@host = 192.168.99.100:8080
+@access_token = ???
+###
+
+GET http://{{ host }}/status
+
+###
+
+POST http://{{ host }}/oauth/register
+Content-Type: application/json
+
+{
+    "name": "eric",
+    "password": "pass",
+    "email": "eric@example.com"
+}
+
+###
+
+GET http://{{ host }}/oauth/register/confirm?confirm_token=eyJ0eXAiOiJKV1QiLCJhbGciOiJIUzI1NiJ9.eyJzdWIiOiJjZWZmZDgyMTcwMzk0NDc3Yjg1ZjE2ODM0MTliMjkwMiIsImNvbmZpcm1fdG9rZW4iOnRydWV9.yhXNAeRvNltOI_FrH6FRqNMC9GMM5oP0XdPiGVQQCA8
+
+###
+POST  http://{{ host }}/oauth/token
+Content-Type: application/x-www-form-urlencoded
+
+grant_type=password&username=eric&password=pass
+
+###
+GET http://{{ host }}/oauth/me
+Authorization: Bearer {{ access_token }}
