@@ -11,6 +11,94 @@ use std::default::Default;
 use std::fmt;
 use uuid::Uuid;
 
+/// The API for the user service
+pub struct Service {
+    // TODO: make this generic so we can mock it out
+    model: PgModel,
+    secret_key: Vec<u8>,
+}
+
+impl Actor for Service {
+    type Context = SyncContext<Self>;
+}
+
+impl Service {
+    /// create a new Service instance
+    pub fn new(model: PgModel, secret_key: Vec<u8>) -> Service {
+        Service { model, secret_key }
+    }
+
+    /// call to get a new access token using a TokenRequest
+    pub fn token(&self, request: &TokenRequest) -> Result<AccessTokenResponse, ServiceError> {
+        let user: User = match *request {
+            TokenRequest::RefreshToken { ref refresh_token } => {
+                let id = &validate_refresh_token(&self.secret_key, refresh_token)
+                    .ok_or(ServiceError::PermissionDenied)?;
+                self.model.find(id)?.ok_or(ServiceError::PermissionDenied)?
+            }
+            TokenRequest::Password {
+                ref username,
+                ref password,
+            } => self.model
+                .verify_login(username, password)?
+                .ok_or(ServiceError::PermissionDenied)?,
+        };
+        Ok(access_token_response(&self.secret_key, &user))
+    }
+
+    /// call to register a new user
+    pub fn register(&self, request: &RegisterRequest) -> Result<RegisterResponse, ServiceError> {
+        let new_user = &NewUser {
+            id: &Uuid::new_v4(),
+            name: &request.name,
+            password: &request.password,
+            email: &request.email,
+        };
+        let user = self.model
+            .create(new_user)?
+            .ok_or(ServiceError::UserExists)?;
+
+        Ok(RegisterResponse {
+            confirm_token: encode_token(
+                &self.secret_key,
+                ConfirmTokenClaim {
+                    sub: user.id.simple().to_string(),
+                    confirm_token: true,
+                },
+            ),
+        })
+    }
+
+    /// confirm a user
+    pub fn confirm_new_user(
+        &self,
+        request: &ConfirmNewUserRequest,
+    ) -> Result<ConfirmNewUserResponse, ServiceError> {
+        let id = &validate_confirm_token(&self.secret_key, &request.confirm_token)
+            .ok_or(ServiceError::InvalidConfirmToken)?;
+
+        self.model.confirm(id)?;
+
+        Ok(ConfirmNewUserResponse)
+    }
+
+    /// get the user for a request token
+    pub fn current_user(
+        &self,
+        request: &CurrentUserRequest,
+    ) -> Result<CurrentUserResponse, ServiceError> {
+        let id = &validate_access_token(&self.secret_key, &request.access_token)
+            .ok_or(ServiceError::PermissionDenied)?;
+        let user = self.model.find(id)?.ok_or(ServiceError::PermissionDenied)?;
+
+        Ok(CurrentUserResponse {
+            identifier: user.id,
+            name: user.name,
+            email: user.email,
+        })
+    }
+}
+
 /// errors that can happen with the service
 ///
 #[derive(Debug, Fail)]
@@ -212,94 +300,6 @@ impl Handler<StatusRequest> for Service {
 
     fn handle(&mut self, _: StatusRequest, _: &mut Self::Context) -> Self::Result {
         Ok(StatusResponse { status: "up" })
-    }
-}
-
-/// The API for the user service
-pub struct Service {
-    // TODO: make this generic so we can mock it out
-    model: PgModel,
-    secret_key: Vec<u8>,
-}
-
-impl Actor for Service {
-    type Context = SyncContext<Self>;
-}
-
-impl Service {
-    /// create a new Service instance
-    pub fn new(model: PgModel, secret_key: Vec<u8>) -> Service {
-        Service { model, secret_key }
-    }
-
-    /// call to get a new access token using a TokenRequest
-    pub fn token(&self, request: &TokenRequest) -> Result<AccessTokenResponse, ServiceError> {
-        let user: User = match *request {
-            TokenRequest::RefreshToken { ref refresh_token } => {
-                let id = &validate_refresh_token(&self.secret_key, refresh_token)
-                    .ok_or(ServiceError::PermissionDenied)?;
-                self.model.find(id)?.ok_or(ServiceError::PermissionDenied)?
-            }
-            TokenRequest::Password {
-                ref username,
-                ref password,
-            } => self.model
-                .verify_login(username, password)?
-                .ok_or(ServiceError::PermissionDenied)?,
-        };
-        Ok(access_token_response(&self.secret_key, &user))
-    }
-
-    /// call to register a new user
-    pub fn register(&self, request: &RegisterRequest) -> Result<RegisterResponse, ServiceError> {
-        let new_user = &NewUser {
-            id: &Uuid::new_v4(),
-            name: &request.name,
-            password: &request.password,
-            email: &request.email,
-        };
-        let user = self.model
-            .create(new_user)?
-            .ok_or(ServiceError::UserExists)?;
-
-        Ok(RegisterResponse {
-            confirm_token: encode_token(
-                &self.secret_key,
-                ConfirmTokenClaim {
-                    sub: user.id.simple().to_string(),
-                    confirm_token: true,
-                },
-            ),
-        })
-    }
-
-    /// confirm a user
-    pub fn confirm_new_user(
-        &self,
-        request: &ConfirmNewUserRequest,
-    ) -> Result<ConfirmNewUserResponse, ServiceError> {
-        let id = &validate_confirm_token(&self.secret_key, &request.confirm_token)
-            .ok_or(ServiceError::InvalidConfirmToken)?;
-
-        self.model.confirm(id)?;
-
-        Ok(ConfirmNewUserResponse)
-    }
-
-    /// get the user for a request token
-    pub fn current_user(
-        &self,
-        request: &CurrentUserRequest,
-    ) -> Result<CurrentUserResponse, ServiceError> {
-        let id = &validate_access_token(&self.secret_key, &request.access_token)
-            .ok_or(ServiceError::PermissionDenied)?;
-        let user = self.model.find(id)?.ok_or(ServiceError::PermissionDenied)?;
-
-        Ok(CurrentUserResponse {
-            identifier: user.id,
-            name: user.name,
-            email: user.email,
-        })
     }
 }
 

@@ -10,22 +10,27 @@ use services::user;
 use services::user::{Service as UserService, ServiceError};
 
 struct AppState {
-    user: Addr<Syn, UserService>,
+    user_service: Addr<Syn, UserService>,
 }
 
 /// run the web service
 pub fn run() {
     let sys = actix::System::new("rs-events");
 
-    let addr = SyncArbiter::start(3, || {
+    // TODO: Use a connection pool
+
+    // Create the user service
+    let user_service = SyncArbiter::start(3, || {
         let conn = db::connection();
         let user_model = UserModel::new(conn);
         UserService::new(user_model, "....".into())
     });
 
+    // Define the routes for the service
     server::new(move || {
-        App::with_state(AppState { user: addr.clone() })
-            .resource("/status", |r| r.method(http::Method::GET).with(status))
+        App::with_state(AppState {
+            user_service: user_service.clone(),
+        }).resource("/status", |r| r.method(http::Method::GET).with(status))
             .resource("/oauth/register", |r| {
                 r.method(http::Method::POST).with2(oauth_register)
             })
@@ -47,13 +52,10 @@ pub fn run() {
 /// this is the service status page
 fn status(state: State<AppState>) -> FutureResponse<HttpResponse> {
     state
-        .user
+        .user_service
         .send(user::StatusRequest {})
         .from_err()
-        .and_then(|x: Result<user::StatusResponse, ServiceError>| {
-            let res = x?;
-            Ok(HttpResponse::Ok().json(res))
-        })
+        .and_then(|res| Ok(HttpResponse::Ok().json(res?)))
         .responder()
 }
 
@@ -63,13 +65,10 @@ fn oauth_register(
     req: Json<user::RegisterRequest>,
 ) -> FutureResponse<HttpResponse> {
     state
-        .user
+        .user_service
         .send(req.0)
         .from_err()
-        .and_then(|res| {
-            let res = res?;
-            Ok(HttpResponse::Ok().json(res))
-        })
+        .and_then(|res| Ok(HttpResponse::Ok().json(res?)))
         .responder()
 }
 
@@ -79,26 +78,20 @@ fn oauth_register_confirm(
     req: Query<user::ConfirmNewUserRequest>,
 ) -> FutureResponse<HttpResponse> {
     state
-        .user
+        .user_service
         .send(req.into_inner())
         .from_err()
-        .and_then(|x| {
-            let res = x?;
-            Ok(HttpResponse::Ok().json(res))
-        })
+        .and_then(|res| Ok(HttpResponse::Ok().json(res?)))
         .responder()
 }
 
 /// this is the request that user-agents can post to get an access token using a OAuth 2.0 password or refresh grant
 fn token(state: State<AppState>, req: Form<user::TokenRequest>) -> FutureResponse<HttpResponse> {
     state
-        .user
+        .user_service
         .send(req.0)
         .from_err()
-        .and_then(|x| {
-            let res = x?;
-            Ok(HttpResponse::Ok().json(res))
-        })
+        .and_then(|res| Ok(HttpResponse::Ok().json(res?)))
         .responder()
 }
 
@@ -107,26 +100,18 @@ fn me(req: HttpRequest<AppState>) -> FutureResponse<HttpResponse> {
     let state = req.state();
 
     // TODO: Move this to a middleware or extractor for simplifying this
-    let access_token = req.headers()
+    let access_token: String = req.headers()
         .get("authorization")
-        .and_then(|x| {
-            let x = x.to_str().ok()?;
-            access_token(x).map(String::from)
-        })
-        .unwrap_or_else(|| "".into());
-
-    // Create a CurrentUserRequest from the access_token header
-    let req = user::CurrentUserRequest { access_token };
+        .and_then(|x| access_token(x.to_str().ok()?))
+        .unwrap_or_else(|| "")
+        .into();
 
     // Send the current user request to the backend and convert it to JSON
     state
-        .user
-        .send(req)
+        .user_service
+        .send(user::CurrentUserRequest { access_token })
         .from_err()
-        .and_then(|res| {
-            let res = res?;
-            Ok(HttpResponse::Ok().json(res))
-        })
+        .and_then(|res| Ok(HttpResponse::Ok().json(res?)))
         .responder()
 }
 
