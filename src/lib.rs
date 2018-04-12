@@ -14,8 +14,8 @@ extern crate futures;
 extern crate jsonwebtoken;
 extern crate libpasta;
 extern crate serde;
-extern crate serde_urlencoded;
 extern crate uuid;
+extern crate serde_json;
 
 pub mod db;
 pub mod models;

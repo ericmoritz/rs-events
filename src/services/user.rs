@@ -3,8 +3,8 @@ use actix::prelude::*;
 use actix_web::*;
 use diesel;
 use jsonwebtoken as jwt;
-use models::user::IOModel;
 use models::user::pg::PgModel;
+use models::user::IOModel;
 use models::user::{NewUser, User};
 use serde::ser::Serialize;
 use std::default::Default;
@@ -33,24 +33,27 @@ impl fmt::Display for ServiceError {
     }
 }
 
-/// represents an OAuth 2.0 password grant
+/// represents an OAuth 2.0 password or refresh_token grant
 ///
 /// See: [rfc-6749 section-4.3.2](https://tools.ietf.org/html/rfc6749#section-4.3.2)
 #[derive(Serialize, Deserialize, Debug, PartialEq)]
-pub struct PasswordGrantRequest {
-    pub username: String,
-    pub password: String,
+#[serde(tag = "grant_type")]
+pub enum TokenRequest {
+    #[serde(rename = "password")]
+    Password { username: String, password: String },
+    #[serde(rename = "refresh_token")]
+    RefreshToken { refresh_token: String },
 }
 
-impl Message for PasswordGrantRequest {
+impl Message for TokenRequest {
     type Result = Result<AccessTokenResponse, ServiceError>;
 }
 
-impl Handler<PasswordGrantRequest> for Service {
+impl Handler<TokenRequest> for Service {
     type Result = Result<AccessTokenResponse, ServiceError>;
 
-    fn handle(&mut self, request: PasswordGrantRequest, _: &mut Self::Context) -> Self::Result {
-        self.password_grant(&request)
+    fn handle(&mut self, request: TokenRequest, _: &mut Self::Context) -> Self::Result {
+        self.token(&request)
     }
 }
 
@@ -78,29 +81,6 @@ struct AccessTokenClaim {
     /// A flag that marks the JSON as an access token so that the access token is shaped differntly that
     /// a refresh or confirm token.  Without this flag, a refresh or confirm token could be used as an access token
     access_token: bool,
-}
-
-/// represents an OAuth 2.0 Refresh Token request
-///
-/// It is used to get a new access token if it expires
-///
-/// See: [RFC-6749 Section 6](https://tools.ietf.org/html/rfc6749#section-6)
-#[derive(Serialize, Deserialize, Debug, PartialEq)]
-pub struct RefreshGrantRequest {
-    /// The refresh token that was returned by the AccessTokenResponse
-    pub refresh_token: String,
-}
-
-impl Message for RefreshGrantRequest {
-    type Result = Result<AccessTokenResponse, ServiceError>;
-}
-
-impl Handler<RefreshGrantRequest> for Service {
-    type Result = Result<AccessTokenResponse, ServiceError>;
-
-    fn handle(&mut self, request: RefreshGrantRequest, _: &mut Self::Context) -> Self::Result {
-        self.refresh_token_grant(&request)
-    }
 }
 
 /// represents the data inside of the [JWT](https://en.wikipedia.org/wiki/JSON_Web_Token) for the refresh token
@@ -252,28 +232,21 @@ impl Service {
         Service { model, secret_key }
     }
 
-    /// call to get an access token using a un/pw
-    pub fn password_grant(
-        &self,
-        request: &PasswordGrantRequest,
-    ) -> Result<AccessTokenResponse, ServiceError> {
-        let user: User = self.model
-            .verify_login(&request.username, &request.password)?
-            .ok_or(ServiceError::PermissionDenied)?;
-
-        Ok(access_token_response(&self.secret_key, &user))
-    }
-
-    /// call to get a new access token using a refresh token
-    pub fn refresh_token_grant(
-        &self,
-        request: &RefreshGrantRequest,
-    ) -> Result<AccessTokenResponse, ServiceError> {
-        let id = &validate_refresh_token(&self.secret_key, &request.refresh_token)
-            .ok_or(ServiceError::PermissionDenied)?;
-
-        let user = self.model.find(id)?.ok_or(ServiceError::PermissionDenied)?;
-
+    /// call to get a new access token using a TokenRequest
+    pub fn token(&self, request: &TokenRequest) -> Result<AccessTokenResponse, ServiceError> {
+        let user: User = match *request {
+            TokenRequest::RefreshToken { ref refresh_token } => {
+                let id = &validate_refresh_token(&self.secret_key, refresh_token)
+                    .ok_or(ServiceError::PermissionDenied)?;
+                self.model.find(id)?.ok_or(ServiceError::PermissionDenied)?
+            }
+            TokenRequest::Password {
+                ref username,
+                ref password,
+            } => self.model
+                .verify_login(username, password)?
+                .ok_or(ServiceError::PermissionDenied)?,
+        };
         Ok(access_token_response(&self.secret_key, &user))
     }
 

@@ -1,26 +1,19 @@
 //! This is the initial MVP of the events service to get the BDD tests to work
+use actix::prelude::*;
+use actix_web::error;
+use actix_web::{http, server, App, AsyncResponder, Form, FutureResponse, HttpMessage, HttpRequest,
+                HttpResponse, Json, Query, State};
 use db;
-// use models::user::IOModel;
+use futures::future::Future;
 use models::user::pg::PgModel as UserModel;
 use services::user;
 use services::user::{Service as UserService, ServiceError};
-// use std::collections::HashMap;
-// use std::error::Error;
-// use std::fmt;
-// use std::io;
-// use std::iter::FromIterator;
-// use std::str::FromStr;
-// use uuid::Uuid;
-
-use actix::prelude::*;
-use actix_web::error;
-use actix_web::{http, server, App, AsyncResponder, FutureResponse, HttpResponse, Json, State};
-use futures::future::Future;
 
 struct AppState {
     user: Addr<Syn, UserService>,
 }
 
+/// run the web service
 pub fn run() {
     let sys = actix::System::new("rs-events");
 
@@ -36,6 +29,13 @@ pub fn run() {
             .resource("/oauth/register", |r| {
                 r.method(http::Method::POST).with2(oauth_register)
             })
+            .resource("/oauth/register/confirm", |r| {
+                r.method(http::Method::GET).with2(oauth_register_confirm)
+            })
+            .resource("/oauth/token", |r| {
+                r.method(http::Method::POST).with2(token)
+            })
+            .resource("/oauth/me", |r| r.method(http::Method::GET).a(me))
     }).bind("0.0.0.0:8080")
         .unwrap()
         .start();
@@ -44,18 +44,7 @@ pub fn run() {
     let _ = sys.run();
 }
 
-// Convert the ServiceError's into actix Errors
-impl From<ServiceError> for error::Error {
-    fn from(x: ServiceError) -> Self {
-        match x {
-            ServiceError::InvalidConfirmToken => error::ErrorUnauthorized(x),
-            ServiceError::PermissionDenied => error::ErrorUnauthorized(x),
-            ServiceError::UserExists => error::ErrorConflict(x),
-            ServiceError::DBError(e) => error::ErrorInternalServerError(e),
-        }
-    }
-}
-
+/// this is the service status page
 fn status(state: State<AppState>) -> FutureResponse<HttpResponse> {
     state
         .user
@@ -68,6 +57,7 @@ fn status(state: State<AppState>) -> FutureResponse<HttpResponse> {
         .responder()
 }
 
+/// this is the user registration endpoint
 fn oauth_register(
     state: State<AppState>,
     req: Json<user::RegisterRequest>,
@@ -76,358 +66,90 @@ fn oauth_register(
         .user
         .send(req.0)
         .from_err()
-        .and_then(|x: Result<user::RegisterResponse, ServiceError>| {
+        .and_then(|res| {
+            let res = res?;
+            Ok(HttpResponse::Ok().json(res))
+        })
+        .responder()
+}
+
+/// this is the confirmation endpoint for confirming a user
+fn oauth_register_confirm(
+    state: State<AppState>,
+    req: Query<user::ConfirmNewUserRequest>,
+) -> FutureResponse<HttpResponse> {
+    state
+        .user
+        .send(req.into_inner())
+        .from_err()
+        .and_then(|x| {
             let res = x?;
             Ok(HttpResponse::Ok().json(res))
         })
         .responder()
 }
 
-/*
-//
-// Runs a web server that passes the BDD tests
-//
-pub fn run() {
-    eprintln!("Listening on 0.0.0.0:8080");
-    rouille::start_server("0.0.0.0:8080", |request| {
-        rouille::log(request, io::stderr(), || {
-            let conn = &db::connection();
-            let user_model = &UserModel::new(conn);
-            let user_service = &UserService::new(user_model, b"....");
-
-            router!(request,
-
-                (GET)  (/status) => { status(user_model) },
-                (POST) (/oauth/register) => { oauth_register(user_service, request) },
-                (GET)  (/oauth/register/confirm) => { oauth_register_confirm(user_service, request) },
-                (POST) (/oauth/token) => { oauth_token(user_service, request) },
-                (GET)  (/oauth/me) => { me(user_service, request) },
-                _ => Response::empty_404()
-            )
+/// this is the request that user-agents can post to get an access token using a OAuth 2.0 password or refresh grant
+fn token(state: State<AppState>, req: Form<user::TokenRequest>) -> FutureResponse<HttpResponse> {
+    state
+        .user
+        .send(req.0)
+        .from_err()
+        .and_then(|x| {
+            let res = x?;
+            Ok(HttpResponse::Ok().json(res))
         })
-    })
-}
-//
-// Handlers
-//
-#[derive(Serialize, Debug)]
-struct Status<'a> {
-    pub status: &'a str,
+        .responder()
 }
 
-/// this is the status endpoint
-fn status(user_model: &UserModel) -> Response {
-    let status = user_model
-        .find(&Uuid::new_v4())
-        .map(|_| Status { status: "up" })
-        .unwrap_or_else(|_| Status { status: "down" });
+/// this is JSON for the user that owns the Access Token in the Auth header
+fn me(req: HttpRequest<AppState>) -> FutureResponse<HttpResponse> {
+    let state = req.state();
 
-    Response::json(&status)
+    // TODO: Move this to a middleware or extractor for simplifying this
+    let access_token = req.headers()
+        .get("authorization")
+        .and_then(|x| {
+            let x = x.to_str().ok()?;
+            access_token(x).map(String::from)
+        })
+        .unwrap_or_else(|| "".into());
+
+    // Create a CurrentUserRequest from the access_token header
+    let req = user::CurrentUserRequest { access_token };
+
+    // Send the current user request to the backend and convert it to JSON
+    state
+        .user
+        .send(req)
+        .from_err()
+        .and_then(|res| {
+            let res = res?;
+            Ok(HttpResponse::Ok().json(res))
+        })
+        .responder()
 }
 
-#[derive(Deserialize)]
-struct RegisterForm {
-    name: String,
-    password: String,
-    email: String,
-}
-
-/// this is the user registration endpoint
-///
-/// This accepts a json POST of [`RegisterForm`]
-fn oauth_register(user_service: &UserService, request: &Request) -> Response {
-    let data: RegisterForm = try_or_400!(rouille::input::json_input(request));
-
-    let req = user::RegisterRequest {
-        name: &data.name,
-        password: &data.password,
-        email: &data.email,
-    };
-    user_service
-        .register(&req)
-        .map(Response::from)
-        .unwrap_or_else(Response::from)
-}
-
-/// this is the user confirmation endpoint
-///
-/// This is a GET request for a query string of `?confirm_token`
-fn oauth_register_confirm(user_service: &UserService, request: &Request) -> Response {
-    let confirm_token: String = try_or_400!(
-        request
-            .get_param("confirm_token")
-            .ok_or(WebError::MissingConfirmToken)
-    );
-    let req = &user::ConfirmNewUserRequest {
-        confirm_token: &confirm_token,
-    };
-    user_service
-        .confirm_new_user(req)
-        .map(Response::from)
-        .unwrap_or_else(Response::from)
-}
-
-/// this is the oauth token endpoint for making password or refresh grants against
-///
-/// This follows the protocol set up by the following specs
-///
-///  - [password grant](https://tools.ietf.org/html/rfc6749#section-4.3.2)
-///  - [refresh grant](https://tools.ietf.org/html/rfc6749#section-6)
-///
-fn oauth_token(user_service: &UserService, request: &Request) -> Response {
-    let form = &try_or_400!(post::raw_urlencoded_post_input(request));
-    let grant_type = try_or_400!(find_grant_type(form));
-    match grant_type {
-        GrantType::Password => {
-            let req = &try_or_400!(form_to_password_grant(form));
-            user_service
-                .password_grant(req)
-                .map(Response::from)
-                .unwrap_or_else(Response::from)
-        }
-        GrantType::Refresh => {
-            let req = &try_or_400!(form_to_refresh_grant(form));
-
-            user_service
-                .refresh_token_grant(req)
-                .map(Response::from)
-                .unwrap_or_else(Response::from)
+/// Convert the ServiceError's into actix Errors
+impl From<ServiceError> for error::Error {
+    fn from(x: ServiceError) -> Self {
+        match x {
+            ServiceError::InvalidConfirmToken => error::ErrorUnauthorized(x),
+            ServiceError::PermissionDenied => error::ErrorUnauthorized(x),
+            ServiceError::UserExists => error::ErrorConflict(x),
+            ServiceError::DBError(e) => error::ErrorInternalServerError(e),
         }
     }
 }
 
-/// The current user handler
-///
-/// This requires a `Authorization: Bearer {access_token}` header to make the request
-fn me(user_service: &UserService, request: &Request) -> Response {
-    let access_token = request.header("Authorization")
-        .and_then(move |x| x.get(7..)) // Get everything after "Bearer "
-        .unwrap_or("");
-
-    let req = &user::CurrentUserRequest { access_token };
-    user_service
-        .current_user(req)
-        .map(Response::from)
-        .unwrap_or_else(Response::from)
-}
-
-// Cenverters
-//
-impl From<user::CurrentUserResponse> for Response {
-    fn from(result: user::CurrentUserResponse) -> Self {
-        Response::json(&result)
-    }
-}
-
-impl From<user::AccessTokenResponse> for Response {
-    fn from(result: user::AccessTokenResponse) -> Self {
-        Response::json(&result)
-    }
-}
-
-impl From<user::ConfirmNewUserResponse> for Response {
-    fn from(result: user::ConfirmNewUserResponse) -> Self {
-        Response::json(&result)
-    }
-}
-
-impl From<user::RegisterResponse> for Response {
-    fn from(result: user::RegisterResponse) -> Self {
-        Response::json(&result)
-    }
-}
-
-///
-/// This is a private Error type for things that can go wrong
-///
-#[derive(Debug, PartialEq)]
-enum WebError {
-    MissingConfirmToken,
-    MissingPassword,
-    MissingUsername,
-    MissingRefreshToken,
-    InvalidGrantType,
-}
-
-impl fmt::Display for WebError {
-    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
-        write!(f, "{:?}", self)
-    }
-}
-
-impl Error for WebError {
-    fn description(&self) -> &str {
-        use self::WebError::*;
-
-        match *self {
-            MissingUsername => "missing username",
-            MissingPassword => "missing password",
-            MissingRefreshToken => "missing refresh_token",
-            MissingConfirmToken => "missing confirm token",
-            InvalidGrantType => "invalid grant type",
-        }
-    }
-}
-
-impl From<user::ServiceError> for Response {
-    fn from(err: user::ServiceError) -> Self {
-        use services::user::ServiceError::*;
-        match err {
-            InvalidConfirmToken => Response::text("InvalidConfirmToken").with_status_code(400),
-            PermissionDenied => Response::text("").with_status_code(403),
-            UserExists => Response::text("UserExists").with_status_code(403),
-            DBError(_) => Response::text("").with_status_code(500),
-        }
-    }
-}
-
-///
-/// This is a enum to represent the `grant_type` strings, `"password"` and `"refresh_token"`
-///
-/// Note: We may want to move this to the service module
-#[derive(Debug, PartialEq)]
-enum GrantType {
-    Password,
-    Refresh,
-}
-
-impl FromStr for GrantType {
-    type Err = WebError;
-
-    fn from_str(s: &str) -> Result<Self, Self::Err> {
-        match s {
-            "password" => Ok(GrantType::Password),
-            "refresh_token" => Ok(GrantType::Refresh),
-            _ => Err(WebError::InvalidGrantType),
-        }
+/// Extract the access_token from the Auth header if it is valid
+fn access_token(x: &str) -> Option<&str> {
+    match (x.get(..7), x.get(7..)) {
+        (Some("Bearer "), Some(x)) => Some(x),
+        _ => None,
     }
 }
 #[test]
-fn test_grant_type_from_str() {
-    assert_eq!(
-        GrantType::from_str("password").unwrap(),
-        GrantType::Password
-    )
+fn test_confirm_token() {
+    assert_eq!(confirm_token("Bearer xxx"), Some("xxx"));
 }
-
-///
-/// # Helpers
-///
-
-///
-/// Finds the `grant_type` in the Vector of form fields
-///
-type Fields = [(String, String)];
-fn find_grant_type(fields: &Fields) -> Result<GrantType, WebError> {
-    for &(ref k, ref v) in fields.iter() {
-        if k == "grant_type" {
-            return GrantType::from_str(v);
-        }
-    }
-    Err(WebError::InvalidGrantType)
-}
-#[test]
-fn test_find_grant_type() {
-    assert_eq!(
-        find_grant_type(&vec![
-            ("x".into(), "y".into()),
-            ("grant_type".into(), "password".into()),
-            ("a".into(), "b".into()),
-        ]).unwrap(),
-        GrantType::Password
-    );
-
-    assert_eq!(
-        find_grant_type(&vec![
-            ("x".into(), "y".into()),
-            ("grant_type".into(), "refresh_token".into()),
-            ("a".into(), "b".into()),
-        ]).unwrap(),
-        GrantType::Refresh
-    );
-
-    assert_eq!(
-        find_grant_type(&vec![("x".into(), "y".into()), ("a".into(), "b".into())]).unwrap_err(),
-        WebError::InvalidGrantType
-    );
-}
-
-fn form_to_map(fields: &Fields) -> HashMap<&str, &str> {
-    HashMap::from_iter(fields.iter().map(|&(ref k, ref v)| {
-        let k: &str = k;
-        let v: &str = v;
-        (k, v)
-    }))
-}
-
-///
-/// Converts the Form Fields to a `PasswordGrantRequest`
-///
-fn form_to_password_grant(
-    fields: &[(String, String)],
-) -> Result<user::PasswordGrantRequest, WebError> {
-    let fields = form_to_map(fields);
-    let username = fields.get("username").ok_or(WebError::MissingUsername)?;
-    let password = fields.get("password").ok_or(WebError::MissingPassword)?;
-
-    Ok(user::PasswordGrantRequest { username, password })
-}
-#[test]
-fn test_form_to_password_grant() {
-    assert_eq!(
-        form_to_password_grant(&vec![
-            ("grant_type".into(), "password".into()),
-            ("username".into(), "test-user".into()),
-            ("password".into(), "test-password".into()),
-        ]).unwrap(),
-        user::PasswordGrantRequest {
-            username: "test-user".into(),
-            password: "test-password".into(),
-        }
-    );
-
-    assert_eq!(
-        form_to_password_grant(&vec![]).unwrap_err(),
-        WebError::MissingUsername
-    );
-
-    assert_eq!(
-        form_to_password_grant(&vec![("username".into(), "test-user".into())]).unwrap_err(),
-        WebError::MissingPassword
-    );
-
-    assert_eq!(
-        form_to_password_grant(&vec![("password".into(), "test-pass".into())]).unwrap_err(),
-        WebError::MissingUsername
-    );
-}
-
-/// Converts the Form Fields into a `RefreshGrantRequest`
-fn form_to_refresh_grant(fields: &Fields) -> Result<user::RefreshGrantRequest, WebError> {
-    let fields = form_to_map(fields);
-    let token = fields
-        .get("refresh_token")
-        .ok_or(WebError::MissingRefreshToken)?;
-
-    Ok(user::RefreshGrantRequest {
-        refresh_token: token,
-    })
-}
-#[test]
-fn test_form_to_refresh_grant() {
-    assert_eq!(
-        form_to_refresh_grant(&vec![
-            ("grant_type".into(), "refesh_token".into()),
-            ("refresh_token".into(), "12345".into()),
-        ]).unwrap(),
-        user::RefreshGrantRequest {
-            refresh_token: "12345".into(),
-        }
-    );
-
-    assert_eq!(
-        form_to_refresh_grant(&vec![]).unwrap_err(),
-        WebError::MissingRefreshToken
-    );
-}
-*/
