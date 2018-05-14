@@ -1,3 +1,5 @@
+** This is a work in progress to explore building services in Rust**
+
 # rs-events
 
 A web service for events
